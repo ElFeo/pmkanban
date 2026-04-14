@@ -3,6 +3,9 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
+from app.db import get_board, init_db, save_board
+from app.schemas import BoardData
+
 app = FastAPI()
 
 BASE_DIR = Path(__file__).resolve().parents[1]
@@ -14,9 +17,25 @@ def hello() -> dict[str, str]:
     return {"message": "Hello from FastAPI", "status": "ok"}
 
 
+@app.on_event("startup")
+def startup() -> None:
+    init_db()
+
+
+@app.get("/api/board/{username}", response_model=BoardData)
+def read_board(username: str) -> BoardData:
+    return get_board(username)
+
+
+@app.put("/api/board/{username}", response_model=BoardData)
+def update_board(username: str, board: BoardData) -> BoardData:
+    return save_board(username, board)
+
+
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
-app.mount("/", StaticFiles(directory=FRONTEND_DIR, html=True), name="frontend")
+if FRONTEND_DIR.exists():
+    app.mount("/", StaticFiles(directory=FRONTEND_DIR, html=True), name="frontend")
