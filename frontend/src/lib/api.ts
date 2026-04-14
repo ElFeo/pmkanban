@@ -1,5 +1,16 @@
 import type { BoardData } from "@/lib/kanban";
 
+export type ChatMessage = {
+  role: "user" | "assistant";
+  content: string;
+};
+
+export type AIChatResponse = {
+  reply: string;
+  board?: BoardData | null;
+  applied: boolean;
+};
+
 type ApiError = {
   message: string;
 };
@@ -49,6 +60,29 @@ export const saveBoard = async (
       body: JSON.stringify(board),
     });
     return await readJson<BoardData>(response);
+  } catch (error) {
+    throw new Error(parseError(error));
+  }
+};
+
+export const sendChatMessage = async (
+  username: string,
+  message: string,
+  history: ChatMessage[]
+): Promise<AIChatResponse> => {
+  try {
+    const response = await fetch("/api/ai/chat", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        username,
+        message,
+        history,
+      }),
+    });
+    return await readJson<AIChatResponse>(response);
   } catch (error) {
     throw new Error(parseError(error));
   }

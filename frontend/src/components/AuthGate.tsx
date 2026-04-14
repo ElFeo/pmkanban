@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useState, type FormEvent } from "react";
+import { ChatSidebar } from "@/components/ChatSidebar";
 import { KanbanBoard } from "@/components/KanbanBoard";
-import { fetchBoard, saveBoard } from "@/lib/api";
+import { fetchBoard, saveBoard, sendChatMessage, type ChatMessage } from "@/lib/api";
 import { initialData, type BoardData } from "@/lib/kanban";
 
 const AUTH_STORAGE_KEY = "pm-authenticated";
@@ -20,6 +21,9 @@ export const AuthGate = () => {
   const [board, setBoard] = useState<BoardData | null>(null);
   const [loadingBoard, setLoadingBoard] = useState(false);
   const [savingBoard, setSavingBoard] = useState(false);
+  const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
+  const [chatSending, setChatSending] = useState(false);
+  const [chatError, setChatError] = useState<string | null>(null);
 
   useEffect(() => {
     const stored = localStorage.getItem(AUTH_STORAGE_KEY);
@@ -67,6 +71,8 @@ export const AuthGate = () => {
     setAuthState("unauthenticated");
     setBoard(null);
     setError(null);
+    setChatHistory([]);
+    setChatError(null);
   };
 
   const handleBoardChange = (nextBoard: BoardData) => {
@@ -83,6 +89,37 @@ export const AuthGate = () => {
       .finally(() => {
         setSavingBoard(false);
       });
+  };
+
+  const handleSendChat = async (message: string) => {
+    if (!board || chatSending) {
+      return;
+    }
+
+    const nextHistory: ChatMessage[] = [
+      ...chatHistory,
+      { role: "user", content: message },
+    ];
+    setChatHistory(nextHistory);
+    setChatSending(true);
+    setChatError(null);
+
+    try {
+      const response = await sendChatMessage(VALID_USERNAME, message, chatHistory);
+      setChatHistory((prev) => [
+        ...prev,
+        { role: "assistant", content: response.reply },
+      ]);
+      if (response.applied && response.board) {
+        setBoard(response.board);
+        setError(null);
+      }
+    } catch (err) {
+      const fallback = err instanceof Error ? err.message : "Unable to reach AI.";
+      setChatError(fallback);
+    } finally {
+      setChatSending(false);
+    }
   };
 
   if (authState === "checking") {
@@ -117,7 +154,15 @@ export const AuthGate = () => {
             Loading board...
           </div>
         ) : (
-          <KanbanBoard board={board} onBoardChange={handleBoardChange} />
+          <div className="mx-auto grid max-w-[1600px] grid-cols-1 gap-6 px-6 pb-16 pt-12 xl:grid-cols-[1fr_360px]">
+            <KanbanBoard board={board} onBoardChange={handleBoardChange} />
+            <ChatSidebar
+              messages={chatHistory}
+              onSend={handleSendChat}
+              isSending={chatSending}
+              error={chatError}
+            />
+          </div>
         )}
         {savingBoard ? (
           <div className="fixed bottom-6 right-6 z-50 rounded-full border border-[var(--stroke)] bg-white px-4 py-2 text-xs font-semibold uppercase tracking-wide text-[var(--gray-text)] shadow-[var(--shadow)]">

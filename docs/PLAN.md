@@ -171,11 +171,11 @@ Success criteria
 ## Part 10: AI Chat Sidebar UI
 
 Checklist
-- [ ] Add sidebar UI for chat history and input
-- [ ] Wire UI to backend AI endpoint
-- [ ] Apply Kanban updates from AI responses and refresh UI
-- [ ] Add Vitest tests for chat UI behavior
-- [ ] User reviews and approves final experience
+- [x] Add sidebar UI for chat history and input
+- [x] Wire UI to backend AI endpoint
+- [x] Apply Kanban updates from AI responses and refresh UI
+- [x] Add Vitest tests for chat UI behavior
+- [x] User reviews and approves final experience
 
 Tests
 - Automated: `npm run test:unit` in frontend

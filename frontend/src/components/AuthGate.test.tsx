@@ -42,6 +42,9 @@ describe("AuthGate", () => {
     expect(
       await screen.findByRole("heading", { name: /kanban studio/i })
     ).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: /ai chat/i })
+    ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /log out/i })).toBeInTheDocument();
   });
 
