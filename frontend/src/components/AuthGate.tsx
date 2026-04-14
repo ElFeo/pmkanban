@@ -2,6 +2,8 @@
 
 import { useEffect, useState, type FormEvent } from "react";
 import { KanbanBoard } from "@/components/KanbanBoard";
+import { fetchBoard, saveBoard } from "@/lib/api";
+import { initialData, type BoardData } from "@/lib/kanban";
 
 const AUTH_STORAGE_KEY = "pm-authenticated";
 const VALID_USERNAME = "user";
@@ -15,11 +17,34 @@ export const AuthGate = () => {
   const [authState, setAuthState] = useState<AuthState>("checking");
   const [formState, setFormState] = useState(initialFormState);
   const [error, setError] = useState<string | null>(null);
+  const [board, setBoard] = useState<BoardData | null>(null);
+  const [loadingBoard, setLoadingBoard] = useState(false);
+  const [savingBoard, setSavingBoard] = useState(false);
 
   useEffect(() => {
     const stored = localStorage.getItem(AUTH_STORAGE_KEY);
     setAuthState(stored === "true" ? "authenticated" : "unauthenticated");
   }, []);
+
+  useEffect(() => {
+    if (authState !== "authenticated") {
+      return;
+    }
+
+    setLoadingBoard(true);
+    setError(null);
+    fetchBoard(VALID_USERNAME)
+      .then((data) => {
+        setBoard(data);
+      })
+      .catch(() => {
+        setBoard(initialData);
+        setError("Unable to load the board. Showing local data.");
+      })
+      .finally(() => {
+        setLoadingBoard(false);
+      });
+  }, [authState]);
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -40,6 +65,24 @@ export const AuthGate = () => {
   const handleLogout = () => {
     localStorage.removeItem(AUTH_STORAGE_KEY);
     setAuthState("unauthenticated");
+    setBoard(null);
+    setError(null);
+  };
+
+  const handleBoardChange = (nextBoard: BoardData) => {
+    setBoard(nextBoard);
+    setSavingBoard(true);
+    saveBoard(VALID_USERNAME, nextBoard)
+      .then((saved) => {
+        setBoard(saved);
+        setError(null);
+      })
+      .catch(() => {
+        setError("Unable to save changes. Try again.");
+      })
+      .finally(() => {
+        setSavingBoard(false);
+      });
   };
 
   if (authState === "checking") {
@@ -62,7 +105,25 @@ export const AuthGate = () => {
             Log out
           </button>
         </div>
-        <KanbanBoard />
+        {error ? (
+          <div className="absolute left-0 right-0 top-0 z-40 mx-auto max-w-[520px] px-6 pt-6">
+            <div className="rounded-2xl border border-[var(--stroke)] bg-white/90 p-4 text-sm text-[var(--secondary-purple)] shadow-[var(--shadow)]">
+              {error}
+            </div>
+          </div>
+        ) : null}
+        {loadingBoard || !board ? (
+          <div className="min-h-screen bg-[var(--surface)] px-6 py-16 text-center text-sm text-[var(--gray-text)]">
+            Loading board...
+          </div>
+        ) : (
+          <KanbanBoard board={board} onBoardChange={handleBoardChange} />
+        )}
+        {savingBoard ? (
+          <div className="fixed bottom-6 right-6 z-50 rounded-full border border-[var(--stroke)] bg-white px-4 py-2 text-xs font-semibold uppercase tracking-wide text-[var(--gray-text)] shadow-[var(--shadow)]">
+            Saving...
+          </div>
+        ) : null}
       </div>
     );
   }

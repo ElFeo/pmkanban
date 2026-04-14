@@ -1,6 +1,8 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { AuthGate } from "@/components/AuthGate";
+import { initialData } from "@/lib/kanban";
+import { vi } from "vitest";
 
 const signIn = async (username: string, password: string) => {
   await userEvent.type(screen.getByLabelText(/username/i), username);
@@ -9,8 +11,16 @@ const signIn = async (username: string, password: string) => {
 };
 
 describe("AuthGate", () => {
+  const mockFetch = (payload: unknown) => {
+    return vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => payload,
+    });
+  };
+
   beforeEach(() => {
     localStorage.clear();
+    global.fetch = mockFetch(initialData) as typeof fetch;
   });
 
   it("shows the login form by default", () => {
@@ -41,6 +51,22 @@ describe("AuthGate", () => {
     await userEvent.click(screen.getByRole("button", { name: /log out/i }));
     expect(
       screen.getByRole("heading", { name: /sign in/i })
+    ).toBeInTheDocument();
+  });
+
+  it("renders data from the API", async () => {
+    const apiBoard = {
+      ...initialData,
+      columns: [
+        { id: "col-a", title: "API Column", cardIds: ["card-1"] },
+      ],
+    };
+    global.fetch = mockFetch(apiBoard) as typeof fetch;
+
+    render(<AuthGate />);
+    await signIn("user", "password");
+    expect(
+      await screen.findByText("API Column")
     ).toBeInTheDocument();
   });
 });

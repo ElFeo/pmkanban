@@ -3,8 +3,8 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
-from app.db import get_board, init_db, save_board
-from app.schemas import BoardData
+from .db import get_board, init_db, save_board
+from .schemas import BoardData
 
 app = FastAPI()
 
