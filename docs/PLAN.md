@@ -2,12 +2,20 @@
 
 This plan expands the work into clear checklists with tests and success criteria. Each part ends with a user approval gate before moving on.
 
+## Decisions and notes (so far)
+
+- Frontend is statically exported via Next.js `output: "export"` and served by FastAPI from `frontend/out`.
+- Auth gate uses localStorage with demo credentials ("user" / "password") and renders client-side.
+- Backend API endpoints: `GET /api/board/{username}` and `PUT /api/board/{username}`.
+- SQLite is used for persistence, with automatic DB creation and seed data on first read.
+- FastAPI serves the frontend only when `frontend/out` exists (to keep tests independent of a build).
+
 ## Part 1: Plan
 
 Checklist
-- [ ] Expand this document with detailed steps, tests, and success criteria for Parts 1-10
-- [ ] Create frontend/AGENTS.md describing the existing frontend codebase and test setup
-- [ ] User reviews and approves the plan
+- [x] Expand this document with detailed steps, tests, and success criteria for Parts 1-10
+- [x] Create frontend/AGENTS.md describing the existing frontend codebase and test setup
+- [x] User reviews and approves the plan
 
 Tests
 - None (documentation-only)
@@ -20,12 +28,12 @@ Success criteria
 ## Part 2: Scaffolding
 
 Checklist
-- [ ] Add Dockerfile and docker-compose setup to run frontend build + FastAPI backend in one container
-- [ ] Create backend/ FastAPI app with a health route and a sample API route
-- [ ] Serve a simple static HTML page from FastAPI at / that calls the sample API route
-- [ ] Add start/stop scripts for Mac, Windows, Linux under scripts/
-- [ ] Document how to run the container locally in a minimal README section
-- [ ] User reviews and approves scaffold behavior
+- [x] Add Dockerfile and docker-compose setup to run frontend build + FastAPI backend in one container
+- [x] Create backend/ FastAPI app with a health route and a sample API route
+- [x] Serve a simple static HTML page from FastAPI at / that calls the sample API route
+- [x] Add start/stop scripts for Mac, Windows, Linux under scripts/
+- [x] Document how to run the container locally in a minimal README section
+- [x] User reviews and approves scaffold behavior
 
 Tests
 - Manual: run container, open / and confirm page renders and API call succeeds
@@ -39,11 +47,11 @@ Success criteria
 ## Part 3: Add in Frontend
 
 Checklist
-- [ ] Configure build so Next.js frontend is statically built and served by FastAPI
-- [ ] Ensure / shows the existing Kanban demo UI
-- [ ] Update any routing or asset paths needed for static hosting
-- [ ] Add Vitest unit and integration tests for core UI and state behavior
-- [ ] User reviews and approves UI served from backend
+- [x] Configure build so Next.js frontend is statically built and served by FastAPI
+- [x] Ensure / shows the existing Kanban demo UI
+- [x] Update any routing or asset paths needed for static hosting
+- [x] Add Vitest unit and integration tests for core UI and state behavior
+- [x] User reviews and approves UI served from backend
 
 Tests
 - Automated: `npm run test:unit` in frontend
@@ -57,11 +65,11 @@ Success criteria
 ## Part 4: Fake User Sign-In
 
 Checklist
-- [ ] Add login screen gating the Kanban at /
-- [ ] Accept only "user" / "password" and enable logout
-- [ ] Store session state in a simple, local mechanism
-- [ ] Update frontend tests for auth flow (Vitest)
-- [ ] User reviews and approves login UX
+- [x] Add login screen gating the Kanban at /
+- [x] Accept only "user" / "password" and enable logout
+- [x] Store session state in a simple, local mechanism
+- [x] Update frontend tests for auth flow (Vitest)
+- [x] User reviews and approves login UX
 
 Tests
 - Automated: `npm run test:unit` in frontend
@@ -76,10 +84,10 @@ Success criteria
 ## Part 5: Database Modeling
 
 Checklist
-- [ ] Propose Kanban database schema for multi-user support
-- [ ] Save schema JSON to ./schemas/myschema.json
-- [ ] Add a short docs note explaining tables and relationships
-- [ ] User reviews and approves schema
+- [x] Propose Kanban database schema for multi-user support
+- [x] Save schema JSON to ./schemas/myschema.json
+- [x] Add a short docs note explaining tables and relationships
+- [x] User reviews and approves schema
 
 Tests
 - None (design-only)
@@ -92,11 +100,11 @@ Success criteria
 ## Part 6: Backend API
 
 Checklist
-- [ ] Implement SQLite-backed data layer for users, board, columns, cards
-- [ ] Add FastAPI routes to read and update Kanban data per user
-- [ ] Ensure database is created if missing
-- [ ] Add backend unit tests for routes and data behavior
-- [ ] User reviews and approves API behavior
+- [x] Implement SQLite-backed data layer for users, board, columns, cards
+- [x] Add FastAPI routes to read and update Kanban data per user
+- [x] Ensure database is created if missing
+- [x] Add backend unit tests for routes and data behavior
+- [x] User reviews and approves API behavior
 
 Tests
 - Automated: backend unit tests (pytest)
@@ -110,10 +118,10 @@ Success criteria
 ## Part 7: Frontend + Backend Integration
 
 Checklist
-- [ ] Update frontend to use backend API for data
-- [ ] Ensure UI reflects persisted data changes
-- [ ] Add Vitest integration tests for API-backed behavior
-- [ ] User reviews and approves end-to-end flow
+- [x] Update frontend to use backend API for data
+- [x] Ensure UI reflects persisted data changes
+- [x] Add Vitest integration tests for API-backed behavior
+- [x] User reviews and approves end-to-end flow
 
 Tests
 - Automated: `npm run test:unit` in frontend
