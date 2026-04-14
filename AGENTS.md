@@ -28,6 +28,7 @@ For the MVP, this will run locally (in a docker container)
 - Use SQLLite local database for the database, creating a new db if it doesn't exist
 - Start and Stop server scripts for Mac, PC, Linux in scripts/
 - AI connectivity test route: POST /api/ai/test accepts a prompt in body or query and returns raw OpenRouter JSON
+- AI structured chat route: POST /api/ai/chat validates responses and can accept board-only updates
 
 ## Starting Point
 

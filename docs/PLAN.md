@@ -10,6 +10,8 @@ This plan expands the work into clear checklists with tests and success criteria
 - SQLite is used for persistence, with automatic DB creation and seed data on first read.
 - FastAPI serves the frontend only when `frontend/out` exists (to keep tests independent of a build).
 - AI connectivity test route is `POST /api/ai/test`, accepts a prompt in body or query, and returns raw OpenRouter JSON.
+- AI structured chat route is `POST /api/ai/chat` with schema-validated outputs and optional board updates.
+- AI chat responses accept either a full structured reply or a board-only update with a default reply.
 
 ## Part 1: Plan
 
@@ -151,11 +153,11 @@ Success criteria
 ## Part 9: AI Structured Outputs
 
 Checklist
-- [ ] Propose Structured Outputs JSON schema for AI responses
-- [ ] Update AI call to include board JSON + user message + history
-- [ ] Validate AI responses against the schema
-- [ ] Add backend tests for schema validation and optional board updates
-- [ ] User reviews and approves schema and behavior
+- [x] Propose Structured Outputs JSON schema for AI responses
+- [x] Update AI call to include board JSON + user message + history
+- [x] Validate AI responses against the schema
+- [x] Add backend tests for schema validation and optional board updates
+- [x] User reviews and approves schema and behavior
 
 Tests
 - Automated: backend unit tests for schema parsing
