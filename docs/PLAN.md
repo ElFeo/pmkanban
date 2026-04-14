@@ -1,37 +1,175 @@
-# High level steps for project
+# Project Plan
 
-Part 1: Plan
+This plan expands the work into clear checklists with tests and success criteria. Each part ends with a user approval gate before moving on.
 
-Enrich this document to plan out each of these parts in detail, with substeps listed out as a checklist to be checked off by the agent, and with tests and success critieria for each. Also create an AGENTS.md file inside the frontend directory that describes the existing code there. Ensure the user checks and approves the plan.
+## Part 1: Plan
 
-Part 2: Scaffolding
+Checklist
+- [ ] Expand this document with detailed steps, tests, and success criteria for Parts 1-10
+- [ ] Create frontend/AGENTS.md describing the existing frontend codebase and test setup
+- [ ] User reviews and approves the plan
 
-Set up the Docker infrastructure, the backend in backend/ with FastAPI, and write the start and stop scripts in the scripts/ directory. This should serve example static HTML to confirm that a 'hello world' example works running locally and also make an API call.
+Tests
+- None (documentation-only)
 
-Part 3: Add in Frontend
+Success criteria
+- docs/PLAN.md fully describes steps, tests, and success criteria for each part
+- frontend/AGENTS.md exists and accurately summarizes the current frontend
+- User approval recorded before work continues
 
-Now update so that the frontend is statically built and served, so that the app has the demo Kanban board displayed at /. Comprehensive unit and integration tests.
+## Part 2: Scaffolding
 
-Part 4: Add in a fake user sign in experience
+Checklist
+- [ ] Add Dockerfile and docker-compose setup to run frontend build + FastAPI backend in one container
+- [ ] Create backend/ FastAPI app with a health route and a sample API route
+- [ ] Serve a simple static HTML page from FastAPI at / that calls the sample API route
+- [ ] Add start/stop scripts for Mac, Windows, Linux under scripts/
+- [ ] Document how to run the container locally in a minimal README section
+- [ ] User reviews and approves scaffold behavior
 
-Now update so that on first hitting /, you need to log in with dummy credentials ("user", "password") in order to see the Kanban, and you can log out. Comprehensive tests.
+Tests
+- Manual: run container, open / and confirm page renders and API call succeeds
+- Manual: verify sample API route returns expected JSON
 
-Part 5: Database modeling
+Success criteria
+- Container starts via scripts and serves HTML at /
+- HTML makes a working call to the sample API route
+- Backend responds with expected JSON and status codes
 
-Now propose a database schema for the Kanban, saving it as JSON. Document the database approach in docs/ and get user sign off.
+## Part 3: Add in Frontend
 
-Part 6: Backend
+Checklist
+- [ ] Configure build so Next.js frontend is statically built and served by FastAPI
+- [ ] Ensure / shows the existing Kanban demo UI
+- [ ] Update any routing or asset paths needed for static hosting
+- [ ] Add Vitest unit and integration tests for core UI and state behavior
+- [ ] User reviews and approves UI served from backend
 
-Now add API routes to allow the backend to read and change the Kanban for a given user; test this thoroughly with backend unit tests. The database should be created if it doesn't exist.
+Tests
+- Automated: `npm run test:unit` in frontend
+- Manual: load / in container and verify Kanban UI renders
 
-Part 7: Frontend + Backend
+Success criteria
+- Static frontend build is served at /
+- Kanban board renders with existing behavior
+- Vitest tests pass
 
-Now have the frontend actually use the backend API, so that the app is a proper persistent Kanban board. Test very throughly.
+## Part 4: Fake User Sign-In
 
-Part 8: AI connectivity
+Checklist
+- [ ] Add login screen gating the Kanban at /
+- [ ] Accept only "user" / "password" and enable logout
+- [ ] Store session state in a simple, local mechanism
+- [ ] Update frontend tests for auth flow (Vitest)
+- [ ] User reviews and approves login UX
 
-Now allow the backend to make an AI call via OpenRouter. Test connectivity with a simple "2+2" test and ensure the AI call is working.
+Tests
+- Automated: `npm run test:unit` in frontend
+- Manual: login with valid credentials, reject invalid, logout returns to login screen
 
-Part 9: Now extend the backend call so that it always calls the AI with the JSON of the Kanban board, plus the user's question (and conversation history). The AI should respond with Structured Outputs that includes the response to the user and optionaly an update to the Kanban. Test thoroughly.
+Success criteria
+- Unauthenticated users see login screen
+- Valid credentials show Kanban
+- Logout returns to login screen
+- Vitest tests pass
 
-Part 10: Now add a beautiful sidebar widget to the UI supporting full AI chat, and allowing the LLM (as it determines) to update the Kanban based on its Structured Outputs. If the AI updates the Kanban, then the UI should refresh automatically.
+## Part 5: Database Modeling
+
+Checklist
+- [ ] Propose Kanban database schema for multi-user support
+- [ ] Save schema JSON to ./schemas/myschema.json
+- [ ] Add a short docs note explaining tables and relationships
+- [ ] User reviews and approves schema
+
+Tests
+- None (design-only)
+
+Success criteria
+- schemas/myschema.json exists and matches proposed schema
+- docs update explains schema decisions
+- User approval recorded
+
+## Part 6: Backend API
+
+Checklist
+- [ ] Implement SQLite-backed data layer for users, board, columns, cards
+- [ ] Add FastAPI routes to read and update Kanban data per user
+- [ ] Ensure database is created if missing
+- [ ] Add backend unit tests for routes and data behavior
+- [ ] User reviews and approves API behavior
+
+Tests
+- Automated: backend unit tests (pytest)
+- Manual: verify API with sample requests
+
+Success criteria
+- API supports read and write for Kanban
+- SQLite DB is created on first run
+- Tests pass
+
+## Part 7: Frontend + Backend Integration
+
+Checklist
+- [ ] Update frontend to use backend API for data
+- [ ] Ensure UI reflects persisted data changes
+- [ ] Add Vitest integration tests for API-backed behavior
+- [ ] User reviews and approves end-to-end flow
+
+Tests
+- Automated: `npm run test:unit` in frontend
+- Manual: create/rename/move cards and confirm persistence
+
+Success criteria
+- UI reads from and writes to backend
+- Changes persist across reloads
+- Vitest tests pass
+
+## Part 8: AI Connectivity
+
+Checklist
+- [ ] Add backend OpenRouter client using OPENROUTER_API_KEY
+- [ ] Implement a simple "2+2" API test route for AI connectivity
+- [ ] Add backend tests or manual validation steps
+- [ ] User reviews and approves connectivity
+
+Tests
+- Manual: call AI test route and confirm response contains "4"
+
+Success criteria
+- Backend successfully calls OpenRouter and returns response
+
+## Part 9: AI Structured Outputs
+
+Checklist
+- [ ] Propose Structured Outputs JSON schema for AI responses
+- [ ] Update AI call to include board JSON + user message + history
+- [ ] Validate AI responses against the schema
+- [ ] Add backend tests for schema validation and optional board updates
+- [ ] User reviews and approves schema and behavior
+
+Tests
+- Automated: backend unit tests for schema parsing
+- Manual: send a prompt that should update the board and verify response
+
+Success criteria
+- AI responses conform to schema
+- Optional Kanban updates apply correctly
+- Tests pass
+
+## Part 10: AI Chat Sidebar UI
+
+Checklist
+- [ ] Add sidebar UI for chat history and input
+- [ ] Wire UI to backend AI endpoint
+- [ ] Apply Kanban updates from AI responses and refresh UI
+- [ ] Add Vitest tests for chat UI behavior
+- [ ] User reviews and approves final experience
+
+Tests
+- Automated: `npm run test:unit` in frontend
+- Manual: chat, receive response, and verify board updates
+
+Success criteria
+- Chat sidebar works end-to-end
+- Kanban updates apply automatically
+- Vitest tests pass

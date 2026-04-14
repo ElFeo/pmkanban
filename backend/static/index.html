@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>PM MVP - Hello</title>
+    <style>
+      body {
+        font-family: "Segoe UI", sans-serif;
+        margin: 0;
+        padding: 40px;
+        background: #f7f8fb;
+        color: #032147;
+      }
+      .card {
+        max-width: 520px;
+        border: 1px solid rgba(3, 33, 71, 0.08);
+        background: white;
+        border-radius: 16px;
+        padding: 24px;
+        box-shadow: 0 18px 40px rgba(3, 33, 71, 0.12);
+      }
+      h1 {
+        margin: 0 0 8px;
+        font-size: 24px;
+      }
+      p {
+        margin: 6px 0 0;
+        color: #666666;
+      }
+      pre {
+        background: #f0f2f7;
+        padding: 12px;
+        border-radius: 8px;
+        font-size: 13px;
+        overflow-x: auto;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <h1>FastAPI scaffold is running</h1>
+      <p>API response from <code>/api/hello</code>:</p>
+      <pre id="api-result">Loading...</pre>
+    </div>
+
+    <script>
+      const output = document.getElementById("api-result");
+      fetch("/api/hello")
+        .then((response) => response.json())
+        .then((data) => {
+          output.textContent = JSON.stringify(data, null, 2);
+        })
+        .catch((error) => {
+          output.textContent = `Error: ${error}`;
+        });
+    </script>
+  </body>
+</html>

@@ -1,0 +1,58 @@
+{
+  "schemaVersion": "1.0",
+  "database": "sqlite",
+  "tables": [
+    {
+      "name": "users",
+      "description": "App users (MVP auth is hardcoded, but DB supports multiple users).",
+      "columns": [
+        { "name": "id", "type": "text", "primaryKey": true },
+        { "name": "username", "type": "text", "unique": true, "nullable": false },
+        { "name": "created_at", "type": "text", "nullable": false }
+      ]
+    },
+    {
+      "name": "boards",
+      "description": "One board per user for MVP.",
+      "columns": [
+        { "name": "id", "type": "text", "primaryKey": true },
+        { "name": "user_id", "type": "text", "nullable": false, "references": "users.id" },
+        { "name": "title", "type": "text", "nullable": false },
+        { "name": "created_at", "type": "text", "nullable": false },
+        { "name": "updated_at", "type": "text", "nullable": false }
+      ]
+    },
+    {
+      "name": "columns",
+      "description": "Fixed columns that can be renamed; ordered per board.",
+      "columns": [
+        { "name": "id", "type": "text", "primaryKey": true },
+        { "name": "board_id", "type": "text", "nullable": false, "references": "boards.id" },
+        { "name": "title", "type": "text", "nullable": false },
+        { "name": "position", "type": "integer", "nullable": false },
+        { "name": "created_at", "type": "text", "nullable": false },
+        { "name": "updated_at", "type": "text", "nullable": false }
+      ]
+    },
+    {
+      "name": "cards",
+      "description": "Cards belong to a board and a column; ordered within a column.",
+      "columns": [
+        { "name": "id", "type": "text", "primaryKey": true },
+        { "name": "board_id", "type": "text", "nullable": false, "references": "boards.id" },
+        { "name": "column_id", "type": "text", "nullable": false, "references": "columns.id" },
+        { "name": "title", "type": "text", "nullable": false },
+        { "name": "details", "type": "text", "nullable": false },
+        { "name": "position", "type": "integer", "nullable": false },
+        { "name": "created_at", "type": "text", "nullable": false },
+        { "name": "updated_at", "type": "text", "nullable": false }
+      ]
+    }
+  ],
+  "indexes": [
+    { "name": "idx_boards_user", "table": "boards", "columns": ["user_id"] },
+    { "name": "idx_columns_board", "table": "columns", "columns": ["board_id", "position"] },
+    { "name": "idx_cards_board", "table": "cards", "columns": ["board_id"] },
+    { "name": "idx_cards_column", "table": "cards", "columns": ["column_id", "position"] }
+  ]
+}
