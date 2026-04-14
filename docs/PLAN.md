@@ -9,6 +9,7 @@ This plan expands the work into clear checklists with tests and success criteria
 - Backend API endpoints: `GET /api/board/{username}` and `PUT /api/board/{username}`.
 - SQLite is used for persistence, with automatic DB creation and seed data on first read.
 - FastAPI serves the frontend only when `frontend/out` exists (to keep tests independent of a build).
+- AI connectivity test route is `POST /api/ai/test`, accepts a prompt in body or query, and returns raw OpenRouter JSON.
 
 ## Part 1: Plan
 
@@ -135,13 +136,14 @@ Success criteria
 ## Part 8: AI Connectivity
 
 Checklist
-- [ ] Add backend OpenRouter client using OPENROUTER_API_KEY
-- [ ] Implement a simple "2+2" API test route for AI connectivity
-- [ ] Add backend tests or manual validation steps
-- [ ] User reviews and approves connectivity
+- [x] Add backend OpenRouter client using OPENROUTER_API_KEY
+- [x] Implement a simple "2+2" API test route for AI connectivity
+- [x] Add backend tests or manual validation steps
+- [x] User reviews and approves connectivity
 
 Tests
 - Manual: call AI test route and confirm response contains "4"
+- Automated: backend test skips unless OPENROUTER_API_KEY is set
 
 Success criteria
 - Backend successfully calls OpenRouter and returns response
