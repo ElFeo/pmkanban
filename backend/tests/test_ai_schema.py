@@ -2,6 +2,7 @@ import json
 
 import pytest
 
+from app.db import init_db
 from app.main import _apply_ai_result, _parse_ai_content
 from app.schemas import AIChatResult, BoardData, Card, Column
 
@@ -45,6 +46,7 @@ def test_parse_ai_content_rejects_missing_reply():
 def test_apply_ai_result_updates_board(tmp_path, monkeypatch):
     db_path = tmp_path / "ai.db"
     monkeypatch.setenv("PM_DB_PATH", str(db_path))
+    init_db()
 
     result = AIChatResult(reply="Updated", board=_sample_board())
 

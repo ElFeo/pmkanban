@@ -1,5 +1,12 @@
 import { expect, test } from "@playwright/test";
 
+// Inject auth state before each page load so tests bypass the login gate.
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem("pm-authenticated", "true");
+  });
+});
+
 test("loads the kanban board", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "Kanban Studio" })).toBeVisible();

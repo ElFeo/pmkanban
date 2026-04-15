@@ -51,15 +51,24 @@ def _parse_ai_content(content: str) -> AIChatResult:
     except json.JSONDecodeError as exc:
         raise ValueError("AI response content is not valid JSON") from exc
 
-    try:
-        return AIChatResult.model_validate(parsed)
-    except ValidationError as exc:
+    # Detect raw BoardData at top level (has columns/cards but no reply/board wrapper)
+    if isinstance(parsed, dict) and "columns" in parsed and "cards" in parsed and "reply" not in parsed:
         try:
             board = BoardData.model_validate(parsed)
-        except ValidationError:
+        except ValidationError as exc:
             raise ValueError("AI response did not match schema") from exc
-
         return AIChatResult(reply="Updated board.", board=board)
+
+    try:
+        result = AIChatResult.model_validate(parsed)
+    except ValidationError as exc:
+        raise ValueError("AI response did not match schema") from exc
+
+    # Reject responses that provide a board but omit reply (not a valid structured response)
+    if result.reply is None and result.board is not None:
+        raise ValueError("AI response did not match schema")
+
+    return result
 
 
 def _build_ai_messages(board: BoardData, request: AIChatRequest) -> list[dict[str, str]]:

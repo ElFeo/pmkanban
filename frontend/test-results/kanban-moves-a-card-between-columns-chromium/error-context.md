@@ -1,0 +1,120 @@
+# Page snapshot
+
+```yaml
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - button "Log out" [ref=e3]
+    - generic [ref=e5]: Unable to load the board. Showing local data.
+    - generic [ref=e6]:
+      - main [ref=e8]:
+        - generic [ref=e9]:
+          - generic [ref=e10]:
+            - generic [ref=e11]:
+              - paragraph [ref=e12]: Single Board Kanban
+              - heading "Kanban Studio" [level=1] [ref=e13]
+              - paragraph [ref=e14]: Keep momentum visible. Rename columns, drag cards between stages, and capture quick notes without getting buried in settings.
+            - generic [ref=e15]:
+              - paragraph [ref=e16]: Focus
+              - paragraph [ref=e17]: One board. Five columns. Zero clutter.
+          - generic [ref=e18]:
+            - generic [ref=e19]: Backlog
+            - generic [ref=e21]: Discovery
+            - generic [ref=e23]: In Progress
+            - generic [ref=e25]: Review
+            - generic [ref=e27]: Done
+        - generic [ref=e29]:
+          - generic [ref=e30]:
+            - generic [ref=e32]:
+              - generic [ref=e35]: 2 cards
+              - textbox "Column title" [ref=e36]: Backlog
+            - generic [ref=e37]:
+              - button "Align roadmap themes Draft quarterly themes with impact statements and metrics. Delete Align roadmap themes" [ref=e38]:
+                - generic [ref=e39]:
+                  - generic [ref=e40]:
+                    - heading "Align roadmap themes" [level=4] [ref=e41]
+                    - paragraph [ref=e42]: Draft quarterly themes with impact statements and metrics.
+                  - button "Delete Align roadmap themes" [ref=e43]: Remove
+              - button "Gather customer signals Review support tags, sales notes, and churn feedback. Delete Gather customer signals" [ref=e44]:
+                - generic [ref=e45]:
+                  - generic [ref=e46]:
+                    - heading "Gather customer signals" [level=4] [ref=e47]
+                    - paragraph [ref=e48]: Review support tags, sales notes, and churn feedback.
+                  - button "Delete Gather customer signals" [ref=e49]: Remove
+            - button "Add a card" [ref=e51]
+          - generic [ref=e52]:
+            - generic [ref=e54]:
+              - generic [ref=e57]: 1 cards
+              - textbox "Column title" [ref=e58]: Discovery
+            - button "Prototype analytics view Sketch initial dashboard layout and key drill-downs. Delete Prototype analytics view" [ref=e60]:
+              - generic [ref=e61]:
+                - generic [ref=e62]:
+                  - heading "Prototype analytics view" [level=4] [ref=e63]
+                  - paragraph [ref=e64]: Sketch initial dashboard layout and key drill-downs.
+                - button "Delete Prototype analytics view" [ref=e65]: Remove
+            - button "Add a card" [ref=e67]
+          - generic [ref=e68]:
+            - generic [ref=e70]:
+              - generic [ref=e73]: 2 cards
+              - textbox "Column title" [ref=e74]: In Progress
+            - generic [ref=e75]:
+              - button "Refine status language Standardize column labels and tone across the board. Delete Refine status language" [ref=e76]:
+                - generic [ref=e77]:
+                  - generic [ref=e78]:
+                    - heading "Refine status language" [level=4] [ref=e79]
+                    - paragraph [ref=e80]: Standardize column labels and tone across the board.
+                  - button "Delete Refine status language" [ref=e81]: Remove
+              - button "Design card layout Add hierarchy and spacing for scanning dense lists. Delete Design card layout" [ref=e82]:
+                - generic [ref=e83]:
+                  - generic [ref=e84]:
+                    - heading "Design card layout" [level=4] [ref=e85]
+                    - paragraph [ref=e86]: Add hierarchy and spacing for scanning dense lists.
+                  - button "Delete Design card layout" [ref=e87]: Remove
+            - button "Add a card" [ref=e89]
+          - generic [ref=e90]:
+            - generic [ref=e92]:
+              - generic [ref=e95]: 1 cards
+              - textbox "Column title" [ref=e96]: Review
+            - button "QA micro-interactions Verify hover, focus, and loading states. Delete QA micro-interactions" [ref=e98]:
+              - generic [ref=e99]:
+                - generic [ref=e100]:
+                  - heading "QA micro-interactions" [level=4] [ref=e101]
+                  - paragraph [ref=e102]: Verify hover, focus, and loading states.
+                - button "Delete QA micro-interactions" [ref=e103]: Remove
+            - button "Add a card" [ref=e105]
+          - generic [ref=e106]:
+            - generic [ref=e108]:
+              - generic [ref=e111]: 2 cards
+              - textbox "Column title" [ref=e112]: Done
+            - generic [ref=e113]:
+              - button "Ship marketing page Final copy approved and asset pack delivered. Delete Ship marketing page" [ref=e114]:
+                - generic [ref=e115]:
+                  - generic [ref=e116]:
+                    - heading "Ship marketing page" [level=4] [ref=e117]
+                    - paragraph [ref=e118]: Final copy approved and asset pack delivered.
+                  - button "Delete Ship marketing page" [ref=e119]: Remove
+              - button "Close onboarding sprint Document release notes and share internally. Delete Close onboarding sprint" [ref=e120]:
+                - generic [ref=e121]:
+                  - generic [ref=e122]:
+                    - heading "Close onboarding sprint" [level=4] [ref=e123]
+                    - paragraph [ref=e124]: Document release notes and share internally.
+                  - button "Delete Close onboarding sprint" [ref=e125]: Remove
+            - button "Add a card" [ref=e127]
+        - status [ref=e128]
+      - complementary [ref=e129]:
+        - generic [ref=e130]:
+          - generic [ref=e131]:
+            - paragraph [ref=e132]: Assistant
+            - heading "AI chat" [level=2] [ref=e133]
+            - paragraph [ref=e134]: Ask for quick edits. The assistant can move cards, rename columns, and keep the board in sync.
+          - generic [ref=e135]: Live
+        - paragraph [ref=e138]: No messages yet
+        - generic [ref=e139]:
+          - textbox "Chat message" [ref=e140]:
+            - /placeholder: Ask the assistant to update your board...
+          - generic [ref=e141]:
+            - paragraph [ref=e142]: Ready
+            - button "Send" [disabled] [ref=e143]
+  - button "Open Next.js Dev Tools" [ref=e149] [cursor=pointer]:
+    - img [ref=e150]
+  - alert [ref=e153]
+```
