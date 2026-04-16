@@ -188,7 +188,11 @@ def _insert_board(conn: sqlite3.Connection, board_id: str, board: BoardData) -> 
             (column.id, board_id, column.title, col_index, now, now),
         )
         for card_index, card_id in enumerate(column.cardIds):
-            card = board.cards[card_id]
+            card = board.cards.get(card_id)
+            if card is None:
+                raise ValueError(
+                    f"Column '{column.id}' references missing card '{card_id}'"
+                )
             conn.execute(
                 """
                 INSERT INTO cards (

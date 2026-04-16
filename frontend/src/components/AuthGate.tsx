@@ -3,12 +3,18 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { ChatSidebar } from "@/components/ChatSidebar";
 import { KanbanBoard } from "@/components/KanbanBoard";
-import { fetchBoard, saveBoard, sendChatMessage, type ChatMessage } from "@/lib/api";
+import {
+  fetchBoard,
+  login,
+  saveBoard,
+  sendChatMessage,
+  setAuthToken,
+  type ChatMessage,
+} from "@/lib/api";
 import { initialData, type BoardData } from "@/lib/kanban";
 
-const AUTH_STORAGE_KEY = "pm-authenticated";
-const VALID_USERNAME = "user";
-const VALID_PASSWORD = "password";
+const AUTH_TOKEN_KEY = "pm-token";
+const AUTH_USERNAME_KEY = "pm-username";
 
 const initialFormState = { username: "", password: "" };
 
@@ -16,6 +22,7 @@ type AuthState = "checking" | "authenticated" | "unauthenticated";
 
 export const AuthGate = () => {
   const [authState, setAuthState] = useState<AuthState>("checking");
+  const [loggedInUsername, setLoggedInUsername] = useState<string | null>(null);
   const [formState, setFormState] = useState(initialFormState);
   const [error, setError] = useState<string | null>(null);
   const [board, setBoard] = useState<BoardData | null>(null);
@@ -25,19 +32,28 @@ export const AuthGate = () => {
   const [chatSending, setChatSending] = useState(false);
   const [chatError, setChatError] = useState<string | null>(null);
 
+  // Restore session from sessionStorage on mount
   useEffect(() => {
-    const stored = localStorage.getItem(AUTH_STORAGE_KEY);
-    setAuthState(stored === "true" ? "authenticated" : "unauthenticated");
+    const token = sessionStorage.getItem(AUTH_TOKEN_KEY);
+    const username = sessionStorage.getItem(AUTH_USERNAME_KEY);
+    if (token && username) {
+      setAuthToken(token);
+      setLoggedInUsername(username);
+      setAuthState("authenticated");
+    } else {
+      setAuthState("unauthenticated");
+    }
   }, []);
 
+  // Load board after authentication
   useEffect(() => {
-    if (authState !== "authenticated") {
+    if (authState !== "authenticated" || !loggedInUsername) {
       return;
     }
 
     setLoadingBoard(true);
     setError(null);
-    fetchBoard(VALID_USERNAME)
+    fetchBoard(loggedInUsername)
       .then((data) => {
         setBoard(data);
       })
@@ -48,26 +64,32 @@ export const AuthGate = () => {
       .finally(() => {
         setLoadingBoard(false);
       });
-  }, [authState]);
+  }, [authState, loggedInUsername]);
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const username = formState.username.trim();
     const password = formState.password.trim();
 
-    if (username === VALID_USERNAME && password === VALID_PASSWORD) {
-      localStorage.setItem(AUTH_STORAGE_KEY, "true");
+    try {
+      const { access_token } = await login(username, password);
+      setAuthToken(access_token);
+      sessionStorage.setItem(AUTH_TOKEN_KEY, access_token);
+      sessionStorage.setItem(AUTH_USERNAME_KEY, username);
+      setLoggedInUsername(username);
       setError(null);
       setAuthState("authenticated");
       setFormState(initialFormState);
-      return;
+    } catch {
+      setError("Invalid credentials. Please try again.");
     }
-
-    setError("Invalid credentials. Please try again.");
   };
 
   const handleLogout = () => {
-    localStorage.removeItem(AUTH_STORAGE_KEY);
+    sessionStorage.removeItem(AUTH_TOKEN_KEY);
+    sessionStorage.removeItem(AUTH_USERNAME_KEY);
+    setAuthToken(null);
+    setLoggedInUsername(null);
     setAuthState("unauthenticated");
     setBoard(null);
     setError(null);
@@ -76,14 +98,16 @@ export const AuthGate = () => {
   };
 
   const handleBoardChange = (nextBoard: BoardData) => {
+    const prevBoard = board;
     setBoard(nextBoard);
     setSavingBoard(true);
-    saveBoard(VALID_USERNAME, nextBoard)
+    saveBoard(loggedInUsername!, nextBoard)
       .then((saved) => {
         setBoard(saved);
         setError(null);
       })
       .catch(() => {
+        setBoard(prevBoard);
         setError("Unable to save changes. Try again.");
       })
       .finally(() => {
@@ -105,7 +129,7 @@ export const AuthGate = () => {
     setChatError(null);
 
     try {
-      const response = await sendChatMessage(VALID_USERNAME, message, chatHistory);
+      const response = await sendChatMessage(message, chatHistory);
       setChatHistory((prev) => [
         ...prev,
         { role: "assistant", content: response.reply },
@@ -204,6 +228,7 @@ export const AuthGate = () => {
                 className="mt-2 w-full rounded-xl border border-[var(--stroke)] bg-white px-3 py-2 text-sm font-medium text-[var(--navy-dark)] outline-none transition focus:border-[var(--primary-blue)]"
                 aria-label="Username"
                 autoComplete="username"
+                maxLength={100}
                 required
               />
             </label>
@@ -221,6 +246,7 @@ export const AuthGate = () => {
                 className="mt-2 w-full rounded-xl border border-[var(--stroke)] bg-white px-3 py-2 text-sm font-medium text-[var(--navy-dark)] outline-none transition focus:border-[var(--primary-blue)]"
                 aria-label="Password"
                 autoComplete="current-password"
+                maxLength={200}
                 required
               />
             </label>

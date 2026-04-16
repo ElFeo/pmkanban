@@ -1,15 +1,30 @@
 import json
+import logging
 import os
+from collections import defaultdict
 from pathlib import Path
+from threading import Lock
+from time import time
 from typing import Any
 
 import httpx
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Request, status
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ValidationError
 
+from .auth import create_access_token, get_current_user, verify_credentials
 from .db import get_board, init_db, save_board
-from .schemas import AIChatRequest, AIChatResponse, AIChatResult, BoardData
+from .schemas import (
+    AIChatRequest,
+    AIChatResponse,
+    AIChatResult,
+    BoardData,
+    LoginRequest,
+    LoginResponse,
+)
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI()
 
@@ -18,10 +33,48 @@ FRONTEND_DIR = BASE_DIR.parent / "frontend" / "out"
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 OPENROUTER_MODEL = "openai/gpt-oss-120b"
 
+# ---------------------------------------------------------------------------
+# Security headers middleware
+# ---------------------------------------------------------------------------
 
-class AITestRequest(BaseModel):
-    prompt: str | None = None
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    return response
 
+
+# ---------------------------------------------------------------------------
+# In-memory rate limiter for the AI endpoint
+# ---------------------------------------------------------------------------
+
+_ai_request_log: dict[str, list[float]] = defaultdict(list)
+_rate_lock = Lock()
+RATE_LIMIT_WINDOW = 60   # seconds
+RATE_LIMIT_MAX = 20      # requests per window per IP
+
+
+def _check_ai_rate_limit(request: Request) -> None:
+    client_ip = request.client.host if request.client else "unknown"
+    now = time()
+    with _rate_lock:
+        window_start = now - RATE_LIMIT_WINDOW
+        _ai_request_log[client_ip] = [
+            t for t in _ai_request_log[client_ip] if t > window_start
+        ]
+        if len(_ai_request_log[client_ip]) >= RATE_LIMIT_MAX:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="Rate limit exceeded. Please try again later.",
+            )
+        _ai_request_log[client_ip].append(now)
+
+
+# ---------------------------------------------------------------------------
+# OpenRouter helpers
+# ---------------------------------------------------------------------------
 
 def _call_openrouter(payload: dict[str, Any]) -> dict[str, Any]:
     api_key = os.getenv("OPENROUTER_API_KEY")
@@ -52,19 +105,25 @@ def _parse_ai_content(content: str) -> AIChatResult:
         raise ValueError("AI response content is not valid JSON") from exc
 
     # Detect raw BoardData at top level (has columns/cards but no reply/board wrapper)
-    if isinstance(parsed, dict) and "columns" in parsed and "cards" in parsed and "reply" not in parsed:
+    if (
+        isinstance(parsed, dict)
+        and "columns" in parsed
+        and "cards" in parsed
+        and "reply" not in parsed
+    ):
         try:
             board = BoardData.model_validate(parsed)
         except ValidationError as exc:
             raise ValueError("AI response did not match schema") from exc
         return AIChatResult(reply="Updated board.", board=board)
 
+    # Standard AIChatResult format: {reply, board?}
     try:
         result = AIChatResult.model_validate(parsed)
     except ValidationError as exc:
         raise ValueError("AI response did not match schema") from exc
 
-    # Reject responses that provide a board but omit reply (not a valid structured response)
+    # Reject responses that provide a board without a reply (malformed structured response)
     if result.reply is None and result.board is not None:
         raise ValueError("AI response did not match schema")
 
@@ -112,30 +171,64 @@ def _apply_ai_result(username: str, result: AIChatResult) -> tuple[BoardData | N
 
     try:
         updated = save_board(username, result.board)
-    except KeyError as exc:
+    except (KeyError, ValueError) as exc:
         raise ValueError("Board references missing cards") from exc
 
     return updated, True
 
 
-@app.get("/api/hello")
-def hello() -> dict[str, str]:
-    return {"message": "Hello from FastAPI", "status": "ok"}
+# ---------------------------------------------------------------------------
+# Auth routes
+# ---------------------------------------------------------------------------
+
+@app.post("/api/auth/login", response_model=LoginResponse)
+def login(request: LoginRequest) -> LoginResponse:
+    if not verify_credentials(request.username, request.password):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid credentials",
+        )
+    token = create_access_token(request.username)
+    return LoginResponse(access_token=token, username=request.username)
 
 
-@app.post("/api/ai/test")
-def ai_test(request: AITestRequest | None = None, prompt: str | None = None) -> dict[str, Any]:
-    resolved_prompt = prompt or (request.prompt if request else None) or "2+2"
-    payload = {
-        "model": OPENROUTER_MODEL,
-        "messages": [{"role": "user", "content": resolved_prompt}],
-    }
-    return _call_openrouter(payload)
+# ---------------------------------------------------------------------------
+# Board routes (require authentication)
+# ---------------------------------------------------------------------------
 
+@app.get("/api/board/{username}", response_model=BoardData)
+def read_board(
+    username: str,
+    current_user: str = Depends(get_current_user),
+) -> BoardData:
+    if username != current_user:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
+    return get_board(username)
+
+
+@app.put("/api/board/{username}", response_model=BoardData)
+def update_board(
+    username: str,
+    board: BoardData,
+    current_user: str = Depends(get_current_user),
+) -> BoardData:
+    if username != current_user:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
+    return save_board(username, board)
+
+
+# ---------------------------------------------------------------------------
+# AI chat route (requires authentication + rate limiting)
+# ---------------------------------------------------------------------------
 
 @app.post("/api/ai/chat", response_model=AIChatResponse)
-def ai_chat(request: AIChatRequest) -> AIChatResponse:
-    board = get_board(request.username)
+def ai_chat(
+    request: AIChatRequest,
+    http_request: Request,
+    current_user: str = Depends(get_current_user),
+) -> AIChatResponse:
+    _check_ai_rate_limit(http_request)
+    board = get_board(current_user)
     messages = _build_ai_messages(board, request)
     payload = {
         "model": OPENROUTER_MODEL,
@@ -147,38 +240,48 @@ def ai_chat(request: AIChatRequest) -> AIChatResponse:
     try:
         content = _extract_message_content(response_data)
         result = _parse_ai_content(content)
-        updated_board, applied = _apply_ai_result(request.username, result)
+        updated_board, applied = _apply_ai_result(current_user, result)
         reply = result.reply or "Updated board."
         return AIChatResponse(reply=reply, board=updated_board, applied=applied)
     except ValueError as exc:
+        # Log the full upstream response for debugging; return only the error class to the client
+        logger.error("AI response processing failed: %s | upstream: %s", exc, response_data)
         raise HTTPException(
             status_code=502,
-            detail={
-                "error": str(exc),
-                "openrouter_response": response_data,
-            },
+            detail={"error": str(exc)},
         ) from exc
 
 
-@app.on_event("startup")
-def startup() -> None:
-    init_db()
+# ---------------------------------------------------------------------------
+# Utility routes
+# ---------------------------------------------------------------------------
 
-
-@app.get("/api/board/{username}", response_model=BoardData)
-def read_board(username: str) -> BoardData:
-    return get_board(username)
-
-
-@app.put("/api/board/{username}", response_model=BoardData)
-def update_board(username: str, board: BoardData) -> BoardData:
-    return save_board(username, board)
+@app.get("/api/hello")
+def hello() -> dict[str, str]:
+    return {"message": "Hello from FastAPI", "status": "ok"}
 
 
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
 
+
+# ---------------------------------------------------------------------------
+# Startup
+# ---------------------------------------------------------------------------
+
+@app.on_event("startup")
+def startup() -> None:
+    init_db()
+    if not os.getenv("OPENROUTER_API_KEY"):
+        logger.warning(
+            "OPENROUTER_API_KEY is not set — AI features will be unavailable at runtime"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Static frontend (production only)
+# ---------------------------------------------------------------------------
 
 if FRONTEND_DIR.exists():
     app.mount("/", StaticFiles(directory=FRONTEND_DIR, html=True), name="frontend")

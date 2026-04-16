@@ -11,16 +11,45 @@ const signIn = async (username: string, password: string) => {
 };
 
 describe("AuthGate", () => {
-  const mockFetch = (payload: unknown) => {
-    return vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => payload,
+  /**
+   * Build a fetch mock that:
+   * - Returns a valid JWT response for POST /api/auth/login with correct credentials
+   * - Returns 401 for POST /api/auth/login with wrong credentials
+   * - Returns boardData for all other requests (board GET/PUT)
+   */
+  const makeFetch = (boardData: unknown) => {
+    return vi.fn().mockImplementation((url: string, options?: RequestInit) => {
+      if (typeof url === "string" && url.includes("/api/auth/login")) {
+        const body = options?.body ? JSON.parse(options.body as string) : {};
+        if (body.username === "user" && body.password === "password") {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: async () => ({
+              access_token: "test-token",
+              username: "user",
+              token_type: "bearer",
+            }),
+          });
+        }
+        return Promise.resolve({
+          ok: false,
+          status: 401,
+          json: async () => ({ detail: "Invalid credentials" }),
+        });
+      }
+      // Board and other endpoints
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: async () => boardData,
+      });
     });
   };
 
   beforeEach(() => {
-    localStorage.clear();
-    global.fetch = mockFetch(initialData) as typeof fetch;
+    sessionStorage.clear();
+    global.fetch = makeFetch(initialData) as typeof fetch;
   });
 
   it("shows the login form by default", () => {
@@ -32,7 +61,7 @@ describe("AuthGate", () => {
     render(<AuthGate />);
     await signIn("user", "wrong");
     expect(
-      screen.getByText(/invalid credentials/i)
+      await screen.findByText(/invalid credentials/i)
     ).toBeInTheDocument();
   });
 
@@ -51,7 +80,7 @@ describe("AuthGate", () => {
   it("logs out and returns to the login screen", async () => {
     render(<AuthGate />);
     await signIn("user", "password");
-    await userEvent.click(screen.getByRole("button", { name: /log out/i }));
+    await userEvent.click(await screen.findByRole("button", { name: /log out/i }));
     expect(
       screen.getByRole("heading", { name: /sign in/i })
     ).toBeInTheDocument();
@@ -60,16 +89,12 @@ describe("AuthGate", () => {
   it("renders data from the API", async () => {
     const apiBoard = {
       ...initialData,
-      columns: [
-        { id: "col-a", title: "API Column", cardIds: ["card-1"] },
-      ],
+      columns: [{ id: "col-a", title: "API Column", cardIds: ["card-1"] }],
     };
-    global.fetch = mockFetch(apiBoard) as typeof fetch;
+    global.fetch = makeFetch(apiBoard) as typeof fetch;
 
     render(<AuthGate />);
     await signIn("user", "password");
-    expect(
-      await screen.findByText("API Column")
-    ).toBeInTheDocument();
+    expect(await screen.findByText("API Column")).toBeInTheDocument();
   });
 });

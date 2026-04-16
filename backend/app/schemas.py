@@ -4,14 +4,14 @@ from pydantic import BaseModel, Field
 
 
 class Card(BaseModel):
-    id: str
-    title: str
-    details: str
+    id: str = Field(max_length=100)
+    title: str = Field(max_length=200)
+    details: str = Field(max_length=2000)
 
 
 class Column(BaseModel):
-    id: str
-    title: str
+    id: str = Field(max_length=100)
+    title: str = Field(max_length=100)
     cardIds: list[str]
 
 
@@ -22,12 +22,11 @@ class BoardData(BaseModel):
 
 class ChatMessage(BaseModel):
     role: Literal["user", "assistant"]
-    content: str
+    content: str = Field(max_length=4000)
 
 
 class AIChatRequest(BaseModel):
-    username: str
-    message: str
+    message: str = Field(max_length=1000)
     history: list[ChatMessage] = Field(default_factory=list)
 
 
@@ -40,3 +39,14 @@ class AIChatResponse(BaseModel):
     reply: str
     board: BoardData | None = None
     applied: bool
+
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+
+class LoginResponse(BaseModel):
+    access_token: str
+    username: str
+    token_type: str = "bearer"

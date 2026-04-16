@@ -11,15 +11,36 @@ export type AIChatResponse = {
   applied: boolean;
 };
 
-type ApiError = {
-  message: string;
+export type LoginResponse = {
+  access_token: string;
+  username: string;
+  token_type: string;
 };
 
-const parseError = (error: unknown) => {
-  if (error instanceof Error) {
-    return error.message;
+// ---------------------------------------------------------------------------
+// Module-level auth token store
+// ---------------------------------------------------------------------------
+
+let _authToken: string | null = null;
+
+export const setAuthToken = (token: string | null): void => {
+  _authToken = token;
+};
+
+const getAuthHeaders = (): Record<string, string> => {
+  if (_authToken) {
+    return { Authorization: `Bearer ${_authToken}` };
   }
-  return "Unexpected error";
+  return {};
+};
+
+// ---------------------------------------------------------------------------
+// Response parsing helper
+// ---------------------------------------------------------------------------
+
+type ApiError = {
+  message?: string;
+  detail?: string;
 };
 
 const readJson = async <T>(response: Response): Promise<T> => {
@@ -29,61 +50,74 @@ const readJson = async <T>(response: Response): Promise<T> => {
       const errorBody = (await response.json()) as ApiError;
       if (errorBody?.message) {
         message = errorBody.message;
+      } else if (typeof errorBody?.detail === "string") {
+        message = errorBody.detail;
       }
     } catch {
-      // ignore parse errors
+      // ignore parse errors on error responses
     }
     throw new Error(message);
   }
   return (await response.json()) as T;
 };
 
+// ---------------------------------------------------------------------------
+// Auth
+// ---------------------------------------------------------------------------
+
+export const login = async (
+  username: string,
+  password: string
+): Promise<LoginResponse> => {
+  const response = await fetch("/api/auth/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username, password }),
+  });
+  return readJson<LoginResponse>(response);
+};
+
+// ---------------------------------------------------------------------------
+// Board
+// ---------------------------------------------------------------------------
+
 export const fetchBoard = async (username: string): Promise<BoardData> => {
-  try {
-    const response = await fetch(`/api/board/${username}`);
-    return await readJson<BoardData>(response);
-  } catch (error) {
-    throw new Error(parseError(error));
-  }
+  const response = await fetch(`/api/board/${username}`, {
+    headers: getAuthHeaders(),
+  });
+  return readJson<BoardData>(response);
 };
 
 export const saveBoard = async (
   username: string,
   board: BoardData
 ): Promise<BoardData> => {
-  try {
-    const response = await fetch(`/api/board/${username}`, {
-      method: "PUT",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(board),
-    });
-    return await readJson<BoardData>(response);
-  } catch (error) {
-    throw new Error(parseError(error));
-  }
+  const response = await fetch(`/api/board/${username}`, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+      ...getAuthHeaders(),
+    },
+    body: JSON.stringify(board),
+  });
+  return readJson<BoardData>(response);
 };
 
+// ---------------------------------------------------------------------------
+// AI chat (username no longer in request body — comes from JWT on backend)
+// ---------------------------------------------------------------------------
+
 export const sendChatMessage = async (
-  username: string,
   message: string,
   history: ChatMessage[]
 ): Promise<AIChatResponse> => {
-  try {
-    const response = await fetch("/api/ai/chat", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        username,
-        message,
-        history,
-      }),
-    });
-    return await readJson<AIChatResponse>(response);
-  } catch (error) {
-    throw new Error(parseError(error));
-  }
+  const response = await fetch("/api/ai/chat", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...getAuthHeaders(),
+    },
+    body: JSON.stringify({ message, history }),
+  });
+  return readJson<AIChatResponse>(response);
 };
