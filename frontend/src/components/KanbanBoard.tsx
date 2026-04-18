@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -23,6 +23,8 @@ type KanbanBoardProps = {
 export const KanbanBoard = ({ board, onBoardChange }: KanbanBoardProps) => {
   const [localBoard, setLocalBoard] = useState<BoardData>(() => board);
   const [activeCardId, setActiveCardId] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const searchRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setLocalBoard(board);
@@ -142,6 +144,38 @@ export const KanbanBoard = ({ board, onBoardChange }: KanbanBoardProps) => {
 
   const activeCard = activeCardId ? cardsById[activeCardId] : null;
 
+  const matchesSearch = useCallback((card: Card): boolean => {
+    if (!searchQuery.trim()) return true;
+    const q = searchQuery.toLowerCase();
+    return (
+      card.title.toLowerCase().includes(q) ||
+      (card.details ?? "").toLowerCase().includes(q) ||
+      (card.labels ?? []).some((l) => l.toLowerCase().includes(q))
+    );
+  }, [searchQuery]);
+
+  const handleExport = () => {
+    const blob = new Blob([JSON.stringify(localBoard, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "board-export.json";
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  // Ctrl+K / Cmd+K focuses search
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === "k") {
+        e.preventDefault();
+        searchRef.current?.focus();
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, []);
+
   return (
     <div className="relative overflow-hidden">
       <div className="pointer-events-none absolute left-0 top-0 h-[420px] w-[420px] -translate-x-1/3 -translate-y-1/3 rounded-full bg-[radial-gradient(circle,_rgba(32,157,215,0.25)_0%,_rgba(32,157,215,0.05)_55%,_transparent_70%)]" />
@@ -188,6 +222,36 @@ export const KanbanBoard = ({ board, onBoardChange }: KanbanBoardProps) => {
             >
               + Add column
             </button>
+            <button
+              type="button"
+              onClick={handleExport}
+              aria-label="Export board as JSON"
+              className="ml-auto rounded-full border border-[var(--stroke)] px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-[var(--gray-text)] transition hover:text-[var(--navy-dark)]"
+            >
+              Export JSON
+            </button>
+          </div>
+
+          {/* Search bar */}
+          <div className="relative">
+            <input
+              ref={searchRef}
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search cards… (Ctrl+K)"
+              aria-label="Search cards"
+              className="w-full rounded-xl border border-[var(--stroke)] bg-white px-4 py-2 text-sm text-[var(--navy-dark)] outline-none transition focus:border-[var(--primary-blue)] xl:max-w-sm"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery("")}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-[var(--gray-text)] hover:text-[var(--navy-dark)]"
+                aria-label="Clear search"
+              >
+                Clear
+              </button>
+            )}
           </div>
         </header>
 
@@ -202,7 +266,10 @@ export const KanbanBoard = ({ board, onBoardChange }: KanbanBoardProps) => {
               <KanbanColumn
                 key={column.id}
                 column={column}
-                cards={column.cardIds.map((cardId) => localBoard.cards[cardId]).filter(Boolean)}
+                cards={column.cardIds
+                  .map((cardId) => localBoard.cards[cardId])
+                  .filter(Boolean)
+                  .filter(matchesSearch)}
                 canDelete={localBoard.columns.length > 1}
                 onRename={handleRenameColumn}
                 onDelete={handleDeleteColumn}
