@@ -17,6 +17,22 @@ export type LoginResponse = {
   token_type: string;
 };
 
+export type RegisterResponse = {
+  username: string;
+  message: string;
+};
+
+export type BoardSummary = {
+  id: string;
+  title: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type BoardListResponse = {
+  boards: BoardSummary[];
+};
+
 // ---------------------------------------------------------------------------
 // Module-level auth token store
 // ---------------------------------------------------------------------------
@@ -40,7 +56,7 @@ const getAuthHeaders = (): Record<string, string> => {
 
 type ApiError = {
   message?: string;
-  detail?: string;
+  detail?: string | { msg: string }[];
 };
 
 const readJson = async <T>(response: Response): Promise<T> => {
@@ -52,6 +68,8 @@ const readJson = async <T>(response: Response): Promise<T> => {
         message = errorBody.message;
       } else if (typeof errorBody?.detail === "string") {
         message = errorBody.detail;
+      } else if (Array.isArray(errorBody?.detail)) {
+        message = errorBody.detail.map((e) => e.msg).join(", ");
       }
     } catch {
       // ignore parse errors on error responses
@@ -77,47 +95,93 @@ export const login = async (
   return readJson<LoginResponse>(response);
 };
 
+export const register = async (
+  username: string,
+  password: string
+): Promise<RegisterResponse> => {
+  const response = await fetch("/api/auth/register", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username, password }),
+  });
+  return readJson<RegisterResponse>(response);
+};
+
 // ---------------------------------------------------------------------------
-// Board
+// Boards (multi-board)
 // ---------------------------------------------------------------------------
 
-export const fetchBoard = async (username: string): Promise<BoardData> => {
-  const response = await fetch(`/api/board/${username}`, {
+export const listBoards = async (): Promise<BoardSummary[]> => {
+  const response = await fetch("/api/boards", {
+    headers: getAuthHeaders(),
+  });
+  const data = await readJson<BoardListResponse>(response);
+  return data.boards;
+};
+
+export const createBoard = async (title: string): Promise<BoardSummary> => {
+  const response = await fetch("/api/boards", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+    body: JSON.stringify({ title }),
+  });
+  return readJson<BoardSummary>(response);
+};
+
+export const fetchBoard = async (boardId: string): Promise<BoardData> => {
+  const response = await fetch(`/api/boards/${boardId}`, {
     headers: getAuthHeaders(),
   });
   return readJson<BoardData>(response);
 };
 
 export const saveBoard = async (
-  username: string,
+  boardId: string,
   board: BoardData
 ): Promise<BoardData> => {
-  const response = await fetch(`/api/board/${username}`, {
+  const response = await fetch(`/api/boards/${boardId}`, {
     method: "PUT",
-    headers: {
-      "Content-Type": "application/json",
-      ...getAuthHeaders(),
-    },
+    headers: { "Content-Type": "application/json", ...getAuthHeaders() },
     body: JSON.stringify(board),
   });
   return readJson<BoardData>(response);
 };
 
+export const renameBoard = async (
+  boardId: string,
+  title: string
+): Promise<BoardSummary> => {
+  const response = await fetch(`/api/boards/${boardId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+    body: JSON.stringify({ title }),
+  });
+  return readJson<BoardSummary>(response);
+};
+
+export const deleteBoard = async (boardId: string): Promise<void> => {
+  const response = await fetch(`/api/boards/${boardId}`, {
+    method: "DELETE",
+    headers: getAuthHeaders(),
+  });
+  if (!response.ok) {
+    throw new Error(`Delete failed (${response.status})`);
+  }
+};
+
 // ---------------------------------------------------------------------------
-// AI chat (username no longer in request body — comes from JWT on backend)
+// AI chat
 // ---------------------------------------------------------------------------
 
 export const sendChatMessage = async (
   message: string,
-  history: ChatMessage[]
+  history: ChatMessage[],
+  boardId?: string
 ): Promise<AIChatResponse> => {
   const response = await fetch("/api/ai/chat", {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...getAuthHeaders(),
-    },
-    body: JSON.stringify({ message, history }),
+    headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+    body: JSON.stringify({ message, history, board_id: boardId ?? null }),
   });
   return readJson<AIChatResponse>(response);
 };

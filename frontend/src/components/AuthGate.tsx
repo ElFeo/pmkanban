@@ -1,14 +1,21 @@
 "use client";
 
 import { useEffect, useState, type FormEvent } from "react";
+import { BoardSelector } from "@/components/BoardSelector";
 import { ChatSidebar } from "@/components/ChatSidebar";
 import { KanbanBoard } from "@/components/KanbanBoard";
 import {
+  createBoard,
+  deleteBoard,
   fetchBoard,
+  listBoards,
   login,
+  register,
+  renameBoard,
   saveBoard,
   sendChatMessage,
   setAuthToken,
+  type BoardSummary,
   type ChatMessage,
 } from "@/lib/api";
 import { initialData, type BoardData } from "@/lib/kanban";
@@ -16,15 +23,19 @@ import { initialData, type BoardData } from "@/lib/kanban";
 const AUTH_TOKEN_KEY = "pm-token";
 const AUTH_USERNAME_KEY = "pm-username";
 
-const initialFormState = { username: "", password: "" };
+const initialFormState = { username: "", password: "", confirmPassword: "" };
 
 type AuthState = "checking" | "authenticated" | "unauthenticated";
+type FormMode = "login" | "register";
 
 export const AuthGate = () => {
   const [authState, setAuthState] = useState<AuthState>("checking");
   const [loggedInUsername, setLoggedInUsername] = useState<string | null>(null);
+  const [formMode, setFormMode] = useState<FormMode>("login");
   const [formState, setFormState] = useState(initialFormState);
   const [error, setError] = useState<string | null>(null);
+  const [boards, setBoards] = useState<BoardSummary[]>([]);
+  const [activeBoardId, setActiveBoardId] = useState<string | null>(null);
   const [board, setBoard] = useState<BoardData | null>(null);
   const [loadingBoard, setLoadingBoard] = useState(false);
   const [savingBoard, setSavingBoard] = useState(false);
@@ -45,17 +56,34 @@ export const AuthGate = () => {
     }
   }, []);
 
-  // Load board after authentication
+  // Load boards after authentication
   useEffect(() => {
     if (authState !== "authenticated" || !loggedInUsername) {
       return;
     }
 
+    listBoards()
+      .then((fetched) => {
+        setBoards(fetched);
+        if (fetched.length > 0) {
+          setActiveBoardId(fetched[0].id);
+        }
+      })
+      .catch(() => {
+        setError("Unable to load boards.");
+      });
+  }, [authState, loggedInUsername]);
+
+  // Load board data when active board changes
+  useEffect(() => {
+    if (!activeBoardId) return;
+
     setLoadingBoard(true);
     setError(null);
-    fetchBoard(loggedInUsername)
+    fetchBoard(activeBoardId)
       .then((data) => {
         setBoard(data);
+        setChatHistory([]);
       })
       .catch(() => {
         setBoard(initialData);
@@ -64,12 +92,30 @@ export const AuthGate = () => {
       .finally(() => {
         setLoadingBoard(false);
       });
-  }, [authState, loggedInUsername]);
+  }, [activeBoardId]);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const username = formState.username.trim();
     const password = formState.password.trim();
+    setError(null);
+
+    if (formMode === "register") {
+      if (password !== formState.confirmPassword) {
+        setError("Passwords do not match.");
+        return;
+      }
+      if (password.length < 8) {
+        setError("Password must be at least 8 characters.");
+        return;
+      }
+      try {
+        await register(username, password);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Registration failed.");
+        return;
+      }
+    }
 
     try {
       const { access_token } = await login(username, password);
@@ -77,7 +123,6 @@ export const AuthGate = () => {
       sessionStorage.setItem(AUTH_TOKEN_KEY, access_token);
       sessionStorage.setItem(AUTH_USERNAME_KEY, username);
       setLoggedInUsername(username);
-      setError(null);
       setAuthState("authenticated");
       setFormState(initialFormState);
     } catch {
@@ -91,6 +136,8 @@ export const AuthGate = () => {
     setAuthToken(null);
     setLoggedInUsername(null);
     setAuthState("unauthenticated");
+    setBoards([]);
+    setActiveBoardId(null);
     setBoard(null);
     setError(null);
     setChatHistory([]);
@@ -98,10 +145,11 @@ export const AuthGate = () => {
   };
 
   const handleBoardChange = (nextBoard: BoardData) => {
+    if (!activeBoardId) return;
     const prevBoard = board;
     setBoard(nextBoard);
     setSavingBoard(true);
-    saveBoard(loggedInUsername!, nextBoard)
+    saveBoard(activeBoardId, nextBoard)
       .then((saved) => {
         setBoard(saved);
         setError(null);
@@ -115,8 +163,45 @@ export const AuthGate = () => {
       });
   };
 
+  const handleSelectBoard = (boardId: string) => {
+    setActiveBoardId(boardId);
+  };
+
+  const handleCreateBoard = async (title: string) => {
+    try {
+      const newBoard = await createBoard(title);
+      setBoards((prev) => [...prev, newBoard]);
+      setActiveBoardId(newBoard.id);
+    } catch {
+      setError("Could not create board.");
+    }
+  };
+
+  const handleRenameBoard = async (boardId: string, title: string) => {
+    try {
+      const updated = await renameBoard(boardId, title);
+      setBoards((prev) => prev.map((b) => (b.id === boardId ? updated : b)));
+    } catch {
+      setError("Could not rename board.");
+    }
+  };
+
+  const handleDeleteBoard = async (boardId: string) => {
+    try {
+      await deleteBoard(boardId);
+      const remaining = boards.filter((b) => b.id !== boardId);
+      setBoards(remaining);
+      if (activeBoardId === boardId) {
+        setActiveBoardId(remaining.length > 0 ? remaining[0].id : null);
+        setBoard(null);
+      }
+    } catch {
+      setError("Could not delete board.");
+    }
+  };
+
   const handleSendChat = async (message: string) => {
-    if (!board || chatSending) {
+    if (!board || chatSending || !activeBoardId) {
       return;
     }
 
@@ -129,7 +214,7 @@ export const AuthGate = () => {
     setChatError(null);
 
     try {
-      const response = await sendChatMessage(message, chatHistory);
+      const response = await sendChatMessage(message, chatHistory, activeBoardId);
       setChatHistory((prev) => [
         ...prev,
         { role: "assistant", content: response.reply },
@@ -155,39 +240,78 @@ export const AuthGate = () => {
   }
 
   if (authState === "authenticated") {
+    const hasBoards = boards.length > 0;
+
     return (
       <div className="relative">
-        <div className="pointer-events-none fixed right-6 top-6 z-50">
-          <button
-            type="button"
-            onClick={handleLogout}
-            className="pointer-events-auto rounded-full border border-[var(--stroke)] bg-white px-4 py-2 text-xs font-semibold uppercase tracking-wide text-[var(--navy-dark)] shadow-[var(--shadow)] transition hover:border-[var(--primary-blue)]"
-          >
-            Log out
-          </button>
+        {/* Top bar */}
+        <div className="fixed left-0 right-0 top-0 z-50 flex items-center justify-between border-b border-[var(--stroke)] bg-white/90 px-6 py-3 backdrop-blur">
+          <div className="flex items-center gap-3">
+            <span className="text-xs font-semibold uppercase tracking-[0.25em] text-[var(--gray-text)]">
+              PM App
+            </span>
+            {hasBoards && activeBoardId && (
+              <BoardSelector
+                boards={boards}
+                activeBoardId={activeBoardId}
+                onSelect={handleSelectBoard}
+                onCreate={handleCreateBoard}
+                onRename={handleRenameBoard}
+                onDelete={handleDeleteBoard}
+              />
+            )}
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="text-xs text-[var(--gray-text)]">
+              {loggedInUsername}
+            </span>
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="rounded-full border border-[var(--stroke)] bg-white px-4 py-1.5 text-xs font-semibold uppercase tracking-wide text-[var(--navy-dark)] shadow-[var(--shadow)] transition hover:border-[var(--primary-blue)]"
+            >
+              Log out
+            </button>
+          </div>
         </div>
+
         {error ? (
-          <div className="absolute left-0 right-0 top-0 z-40 mx-auto max-w-[520px] px-6 pt-6">
+          <div className="fixed left-0 right-0 top-14 z-40 mx-auto max-w-[520px] px-6 pt-2">
             <div className="rounded-2xl border border-[var(--stroke)] bg-white/90 p-4 text-sm text-[var(--secondary-purple)] shadow-[var(--shadow)]">
               {error}
             </div>
           </div>
         ) : null}
-        {loadingBoard || !board ? (
-          <div className="min-h-screen bg-[var(--surface)] px-6 py-16 text-center text-sm text-[var(--gray-text)]">
-            Loading board...
-          </div>
-        ) : (
-          <div className="mx-auto grid max-w-[1600px] grid-cols-1 gap-6 px-6 pb-16 pt-12 xl:grid-cols-[1fr_360px]">
-            <KanbanBoard board={board} onBoardChange={handleBoardChange} />
-            <ChatSidebar
-              messages={chatHistory}
-              onSend={handleSendChat}
-              isSending={chatSending}
-              error={chatError}
-            />
-          </div>
-        )}
+
+        <div className="pt-14">
+          {!hasBoards ? (
+            <div className="flex min-h-[calc(100vh-56px)] flex-col items-center justify-center gap-4 text-[var(--gray-text)]">
+              <p className="text-sm">No boards yet. Create your first board.</p>
+              <button
+                type="button"
+                onClick={() => handleCreateBoard("My Board")}
+                className="rounded-full bg-[var(--primary-blue)] px-6 py-2 text-sm font-semibold text-white transition hover:brightness-110"
+              >
+                Create board
+              </button>
+            </div>
+          ) : loadingBoard || !board || !activeBoardId ? (
+            <div className="flex min-h-[calc(100vh-56px)] items-center justify-center text-sm text-[var(--gray-text)]">
+              Loading board...
+            </div>
+          ) : (
+            <div className="mx-auto grid max-w-[1600px] grid-cols-1 gap-6 px-6 pb-16 pt-6 xl:grid-cols-[1fr_360px]">
+              <KanbanBoard board={board} onBoardChange={handleBoardChange} />
+              <ChatSidebar
+                messages={chatHistory}
+                onSend={handleSendChat}
+                isSending={chatSending}
+                error={chatError}
+              />
+            </div>
+          )}
+        </div>
+
         {savingBoard ? (
           <div className="fixed bottom-6 right-6 z-50 rounded-full border border-[var(--stroke)] bg-white px-4 py-2 text-xs font-semibold uppercase tracking-wide text-[var(--gray-text)] shadow-[var(--shadow)]">
             Saving...
@@ -205,13 +329,15 @@ export const AuthGate = () => {
       <main className="relative mx-auto flex min-h-screen max-w-[520px] items-center px-6">
         <div className="w-full rounded-[28px] border border-[var(--stroke)] bg-white/90 p-10 shadow-[var(--shadow)] backdrop-blur">
           <p className="text-xs font-semibold uppercase tracking-[0.35em] text-[var(--gray-text)]">
-            Project Management MVP
+            Project Management
           </p>
           <h1 className="mt-4 font-display text-3xl font-semibold text-[var(--navy-dark)]">
-            Sign in
+            {formMode === "login" ? "Sign in" : "Create account"}
           </h1>
           <p className="mt-3 text-sm leading-6 text-[var(--gray-text)]">
-            Use the demo credentials to access your Kanban workspace.
+            {formMode === "login"
+              ? "Sign in to access your Kanban workspace."
+              : "Register to get your own workspace with multiple boards."}
           </p>
 
           <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
@@ -220,10 +346,7 @@ export const AuthGate = () => {
               <input
                 value={formState.username}
                 onChange={(event) =>
-                  setFormState((prev) => ({
-                    ...prev,
-                    username: event.target.value,
-                  }))
+                  setFormState((prev) => ({ ...prev, username: event.target.value }))
                 }
                 className="mt-2 w-full rounded-xl border border-[var(--stroke)] bg-white px-3 py-2 text-sm font-medium text-[var(--navy-dark)] outline-none transition focus:border-[var(--primary-blue)]"
                 aria-label="Username"
@@ -237,19 +360,33 @@ export const AuthGate = () => {
               <input
                 value={formState.password}
                 onChange={(event) =>
-                  setFormState((prev) => ({
-                    ...prev,
-                    password: event.target.value,
-                  }))
+                  setFormState((prev) => ({ ...prev, password: event.target.value }))
                 }
                 type="password"
                 className="mt-2 w-full rounded-xl border border-[var(--stroke)] bg-white px-3 py-2 text-sm font-medium text-[var(--navy-dark)] outline-none transition focus:border-[var(--primary-blue)]"
                 aria-label="Password"
-                autoComplete="current-password"
+                autoComplete={formMode === "login" ? "current-password" : "new-password"}
                 maxLength={200}
                 required
               />
             </label>
+            {formMode === "register" && (
+              <label className="block text-xs font-semibold uppercase tracking-wide text-[var(--gray-text)]">
+                Confirm Password
+                <input
+                  value={formState.confirmPassword}
+                  onChange={(event) =>
+                    setFormState((prev) => ({ ...prev, confirmPassword: event.target.value }))
+                  }
+                  type="password"
+                  className="mt-2 w-full rounded-xl border border-[var(--stroke)] bg-white px-3 py-2 text-sm font-medium text-[var(--navy-dark)] outline-none transition focus:border-[var(--primary-blue)]"
+                  aria-label="Confirm Password"
+                  autoComplete="new-password"
+                  maxLength={200}
+                  required
+                />
+              </label>
+            )}
             {error ? (
               <p className="text-sm font-semibold text-[var(--secondary-purple)]">
                 {error}
@@ -259,9 +396,43 @@ export const AuthGate = () => {
               type="submit"
               className="w-full rounded-full bg-[var(--secondary-purple)] px-4 py-3 text-xs font-semibold uppercase tracking-wide text-white transition hover:brightness-110"
             >
-              Sign in
+              {formMode === "login" ? "Sign in" : "Create account"}
             </button>
           </form>
+
+          <p className="mt-6 text-center text-sm text-[var(--gray-text)]">
+            {formMode === "login" ? (
+              <>
+                Don&apos;t have an account?{" "}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFormMode("register");
+                    setError(null);
+                    setFormState(initialFormState);
+                  }}
+                  className="font-semibold text-[var(--primary-blue)] hover:underline"
+                >
+                  Sign up
+                </button>
+              </>
+            ) : (
+              <>
+                Already have an account?{" "}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFormMode("login");
+                    setError(null);
+                    setFormState(initialFormState);
+                  }}
+                  className="font-semibold text-[var(--primary-blue)] hover:underline"
+                >
+                  Sign in
+                </button>
+              </>
+            )}
+          </p>
         </div>
       </main>
     </div>

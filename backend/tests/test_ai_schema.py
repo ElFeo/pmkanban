@@ -105,11 +105,14 @@ def test_parse_ai_content_rejects_card_title_too_long():
 def test_apply_ai_result_updates_board(tmp_path, monkeypatch):
     db_path = tmp_path / "ai.db"
     monkeypatch.setenv("PM_DB_PATH", str(db_path))
+    from app.db import create_board, upsert_demo_user
     init_db()
+    upsert_demo_user("user", "hashed")
+    board_id = create_board("user", "Test Board")["id"]
 
     result = AIChatResult(reply="Updated", board=_sample_board())
 
-    board, applied = _apply_ai_result("user", result)
+    board, applied = _apply_ai_result(board_id, "user", result)
 
     assert applied is True
     assert board is not None
@@ -119,7 +122,7 @@ def test_apply_ai_result_updates_board(tmp_path, monkeypatch):
 def test_apply_ai_result_no_update():
     result = AIChatResult(reply="No changes", board=None)
 
-    board, applied = _apply_ai_result("user", result)
+    board, applied = _apply_ai_result("dummy-board-id", "user", result)
 
     assert applied is False
     assert board is None
@@ -137,7 +140,7 @@ def test_apply_ai_result_rejects_missing_cards():
     result = AIChatResult(reply="Updated", board=board)
 
     with pytest.raises(ValueError, match="missing cards"):
-        _apply_ai_result("user", result)
+        _apply_ai_result("dummy-id", "user", result)
 
 
 def test_apply_ai_result_rejects_multiple_missing_cards():
@@ -149,4 +152,4 @@ def test_apply_ai_result_rejects_multiple_missing_cards():
     result = AIChatResult(reply="Updated", board=board)
 
     with pytest.raises(ValueError, match="ghost-1"):
-        _apply_ai_result("user", result)
+        _apply_ai_result("dummy-id", "user", result)

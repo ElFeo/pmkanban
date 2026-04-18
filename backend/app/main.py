@@ -13,15 +13,31 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ValidationError
 
-from .auth import create_access_token, get_current_user, verify_credentials
-from .db import get_board, init_db, save_board
+from .auth import create_access_token, get_current_user, hash_password, verify_credentials
+from .db import (
+    create_board,
+    create_user,
+    delete_board,
+    get_board_by_id,
+    get_or_create_first_board_id,
+    init_db,
+    list_boards,
+    rename_board,
+    save_board_by_id,
+)
 from .schemas import (
     AIChatRequest,
     AIChatResponse,
     AIChatResult,
+    BoardCreateRequest,
     BoardData,
+    BoardListResponse,
+    BoardRenameRequest,
+    BoardSummary,
     LoginRequest,
     LoginResponse,
+    RegisterRequest,
+    RegisterResponse,
 )
 
 logger = logging.getLogger(__name__)
@@ -52,8 +68,8 @@ async def add_security_headers(request: Request, call_next):
 
 _ai_request_log: dict[str, list[float]] = defaultdict(list)
 _rate_lock = Lock()
-RATE_LIMIT_WINDOW = 60   # seconds
-RATE_LIMIT_MAX = 20      # requests per window per IP
+RATE_LIMIT_WINDOW = 60
+RATE_LIMIT_MAX = 20
 
 
 def _check_ai_rate_limit(request: Request) -> None:
@@ -104,7 +120,6 @@ def _parse_ai_content(content: str) -> AIChatResult:
     except json.JSONDecodeError as exc:
         raise ValueError("AI response content is not valid JSON") from exc
 
-    # Detect raw BoardData at top level (has columns/cards but no reply/board wrapper)
     if (
         isinstance(parsed, dict)
         and "columns" in parsed
@@ -117,13 +132,11 @@ def _parse_ai_content(content: str) -> AIChatResult:
             raise ValueError("AI response did not match schema") from exc
         return AIChatResult(reply="Updated board.", board=board)
 
-    # Standard AIChatResult format: {reply, board?}
     try:
         result = AIChatResult.model_validate(parsed)
     except ValidationError as exc:
         raise ValueError("AI response did not match schema") from exc
 
-    # Reject responses that provide a board without a reply (malformed structured response)
     if result.reply is None and result.board is not None:
         raise ValueError("AI response did not match schema")
 
@@ -142,10 +155,8 @@ def _build_ai_messages(board: BoardData, request: AIChatRequest) -> list[dict[st
             "content": "Current board JSON:\n" + json.dumps(board.model_dump()),
         },
     ]
-
     for entry in request.history:
         messages.append({"role": entry.role, "content": entry.content})
-
     messages.append({"role": "user", "content": request.message})
     return messages
 
@@ -155,7 +166,7 @@ def _build_response_schema() -> dict[str, Any]:
     return {"name": "kanban_response", "schema": schema, "strict": True}
 
 
-def _apply_ai_result(username: str, result: AIChatResult) -> tuple[BoardData | None, bool]:
+def _apply_ai_result(board_id: str, username: str, result: AIChatResult) -> tuple[BoardData | None, bool]:
     if result.board is None:
         return None, False
 
@@ -166,11 +177,10 @@ def _apply_ai_result(username: str, result: AIChatResult) -> tuple[BoardData | N
                 missing_cards.append(card_id)
 
     if missing_cards:
-        unique_missing = sorted(set(missing_cards))
-        raise ValueError("Board references missing cards: " + ", ".join(unique_missing))
+        raise ValueError("Board references missing cards: " + ", ".join(sorted(set(missing_cards))))
 
     try:
-        updated = save_board(username, result.board)
+        updated = save_board_by_id(board_id, username, result.board)
     except (KeyError, ValueError) as exc:
         raise ValueError("Board references missing cards") from exc
 
@@ -192,29 +202,99 @@ def login(request: LoginRequest) -> LoginResponse:
     return LoginResponse(access_token=token, username=request.username)
 
 
+@app.post("/api/auth/register", response_model=RegisterResponse, status_code=201)
+def register(request: RegisterRequest) -> RegisterResponse:
+    try:
+        create_user(request.username, hash_password(request.password))
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
+    return RegisterResponse(username=request.username)
+
+
 # ---------------------------------------------------------------------------
-# Board routes (require authentication)
+# Board management routes (multi-board)
 # ---------------------------------------------------------------------------
 
-@app.get("/api/board/{username}", response_model=BoardData)
-def read_board(
-    username: str,
+@app.get("/api/boards", response_model=BoardListResponse)
+def list_user_boards(current_user: str = Depends(get_current_user)) -> BoardListResponse:
+    boards = list_boards(current_user)
+    return BoardListResponse(
+        boards=[BoardSummary(**b) for b in boards]
+    )
+
+
+@app.post("/api/boards", response_model=BoardSummary, status_code=201)
+def create_user_board(
+    request: BoardCreateRequest,
+    current_user: str = Depends(get_current_user),
+) -> BoardSummary:
+    summary = create_board(current_user, request.title)
+    return BoardSummary(**summary)
+
+
+@app.get("/api/boards/{board_id}", response_model=BoardData)
+def get_board_route(
+    board_id: str,
     current_user: str = Depends(get_current_user),
 ) -> BoardData:
-    if username != current_user:
+    try:
+        return get_board_by_id(board_id, current_user)
+    except PermissionError:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
-    return get_board(username)
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Board not found")
 
 
-@app.put("/api/board/{username}", response_model=BoardData)
-def update_board(
-    username: str,
+@app.put("/api/boards/{board_id}", response_model=BoardData)
+def update_board_route(
+    board_id: str,
     board: BoardData,
     current_user: str = Depends(get_current_user),
 ) -> BoardData:
-    if username != current_user:
+    try:
+        return save_board_by_id(board_id, current_user, board)
+    except PermissionError:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
-    return save_board(username, board)
+    except ValueError as exc:
+        msg = str(exc)
+        if "not found" in msg.lower() and "card" not in msg.lower():
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Board not found")
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=msg)
+
+
+@app.patch("/api/boards/{board_id}", response_model=BoardSummary)
+def rename_board_route(
+    board_id: str,
+    request: BoardRenameRequest,
+    current_user: str = Depends(get_current_user),
+) -> BoardSummary:
+    try:
+        rename_board(board_id, current_user, request.title)
+    except PermissionError:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Board not found")
+    boards = list_boards(current_user)
+    board = next((b for b in boards if b["id"] == board_id), None)
+    if board is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Board not found")
+    return BoardSummary(**board)
+
+
+@app.delete("/api/boards/{board_id}", status_code=204)
+def delete_board_route(
+    board_id: str,
+    current_user: str = Depends(get_current_user),
+) -> None:
+    try:
+        delete_board(board_id, current_user)
+    except PermissionError:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Board not found")
 
 
 # ---------------------------------------------------------------------------
@@ -228,7 +308,20 @@ def ai_chat(
     current_user: str = Depends(get_current_user),
 ) -> AIChatResponse:
     _check_ai_rate_limit(http_request)
-    board = get_board(current_user)
+
+    # Resolve board_id: use requested board or fall back to first/default board
+    if request.board_id:
+        board_id = request.board_id
+        try:
+            board = get_board_by_id(board_id, current_user)
+        except PermissionError:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
+        except ValueError:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Board not found")
+    else:
+        board_id = get_or_create_first_board_id(current_user)
+        board = get_board_by_id(board_id, current_user)
+
     messages = _build_ai_messages(board, request)
     payload = {
         "model": OPENROUTER_MODEL,
@@ -240,16 +333,39 @@ def ai_chat(
     try:
         content = _extract_message_content(response_data)
         result = _parse_ai_content(content)
-        updated_board, applied = _apply_ai_result(current_user, result)
+        updated_board, applied = _apply_ai_result(board_id, current_user, result)
         reply = result.reply or "Updated board."
         return AIChatResponse(reply=reply, board=updated_board, applied=applied)
     except ValueError as exc:
-        # Log the full upstream response for debugging; return only the error class to the client
         logger.error("AI response processing failed: %s | upstream: %s", exc, response_data)
-        raise HTTPException(
-            status_code=502,
-            detail={"error": str(exc)},
-        ) from exc
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+# ---------------------------------------------------------------------------
+# Legacy board routes (backward compatibility)
+# ---------------------------------------------------------------------------
+
+@app.get("/api/board/{username}", response_model=BoardData)
+def read_board_legacy(
+    username: str,
+    current_user: str = Depends(get_current_user),
+) -> BoardData:
+    if username != current_user:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
+    board_id = get_or_create_first_board_id(current_user)
+    return get_board_by_id(board_id, current_user)
+
+
+@app.put("/api/board/{username}", response_model=BoardData)
+def update_board_legacy(
+    username: str,
+    board: BoardData,
+    current_user: str = Depends(get_current_user),
+) -> BoardData:
+    if username != current_user:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
+    board_id = get_or_create_first_board_id(current_user)
+    return save_board_by_id(board_id, current_user, board)
 
 
 # ---------------------------------------------------------------------------
@@ -274,9 +390,7 @@ def health() -> dict[str, str]:
 def startup() -> None:
     init_db()
     if not os.getenv("OPENROUTER_API_KEY"):
-        logger.warning(
-            "OPENROUTER_API_KEY is not set — AI features will be unavailable at runtime"
-        )
+        logger.warning("OPENROUTER_API_KEY is not set — AI features will be unavailable")
 
 
 # ---------------------------------------------------------------------------
