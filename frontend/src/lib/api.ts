@@ -170,6 +170,54 @@ export const deleteBoard = async (boardId: string): Promise<void> => {
 };
 
 // ---------------------------------------------------------------------------
+// Board stats + activity
+// ---------------------------------------------------------------------------
+
+export type ColumnStats = {
+  column_id: string;
+  column_title: string;
+  card_count: number;
+};
+
+export type PriorityBreakdown = {
+  low: number;
+  medium: number;
+  high: number;
+  urgent: number;
+  none: number;
+};
+
+export type BoardStats = {
+  board_id: string;
+  total_cards: number;
+  overdue_count: number;
+  columns: ColumnStats[];
+  priority_breakdown: PriorityBreakdown;
+};
+
+export type ActivityEntry = {
+  id: string;
+  action: string;
+  detail: string;
+  created_at: string;
+};
+
+export const getBoardStats = async (boardId: string): Promise<BoardStats> => {
+  const response = await fetch(`/api/boards/${boardId}/stats`, {
+    headers: getAuthHeaders(),
+  });
+  return readJson<BoardStats>(response);
+};
+
+export const getBoardActivity = async (boardId: string): Promise<ActivityEntry[]> => {
+  const response = await fetch(`/api/boards/${boardId}/activity`, {
+    headers: getAuthHeaders(),
+  });
+  const data = await readJson<{ board_id: string; entries: ActivityEntry[] }>(response);
+  return data.entries;
+};
+
+// ---------------------------------------------------------------------------
 // User profile
 // ---------------------------------------------------------------------------
 

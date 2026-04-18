@@ -18,17 +18,21 @@ from .db import (
     create_board,
     create_user,
     delete_board,
+    get_board_activity,
     get_board_by_id,
+    get_board_stats,
     get_or_create_first_board_id,
     get_user_by_username,
     get_user_profile,
     init_db,
     list_boards,
+    log_activity,
     rename_board,
     save_board_by_id,
     update_user_password,
 )
 from .schemas import (
+    ActivityLog,
     AIChatRequest,
     AIChatResponse,
     AIChatResult,
@@ -36,6 +40,7 @@ from .schemas import (
     BoardData,
     BoardListResponse,
     BoardRenameRequest,
+    BoardStats,
     BoardSummary,
     ChangePasswordRequest,
     LoginRequest,
@@ -269,7 +274,10 @@ def update_board_route(
     current_user: str = Depends(get_current_user),
 ) -> BoardData:
     try:
-        return save_board_by_id(board_id, current_user, board)
+        result = save_board_by_id(board_id, current_user, board)
+        card_count = sum(len(col.cardIds) for col in board.columns)
+        log_activity(board_id, "board_updated", f"{card_count} cards across {len(board.columns)} columns")
+        return result
     except PermissionError:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
     except ValueError as exc:
@@ -287,6 +295,7 @@ def rename_board_route(
 ) -> BoardSummary:
     try:
         rename_board(board_id, current_user, request.title)
+        log_activity(board_id, "board_renamed", f"Renamed to '{request.title}'")
     except PermissionError:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
     except ValueError:
@@ -305,6 +314,38 @@ def delete_board_route(
 ) -> None:
     try:
         delete_board(board_id, current_user)
+    except PermissionError:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Board not found")
+
+
+# ---------------------------------------------------------------------------
+# Board stats + activity routes
+# ---------------------------------------------------------------------------
+
+@app.get("/api/boards/{board_id}/stats", response_model=BoardStats)
+def get_stats(
+    board_id: str,
+    current_user: str = Depends(get_current_user),
+) -> BoardStats:
+    try:
+        stats = get_board_stats(board_id, current_user)
+        return BoardStats(**stats)
+    except PermissionError:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Board not found")
+
+
+@app.get("/api/boards/{board_id}/activity", response_model=ActivityLog)
+def get_activity(
+    board_id: str,
+    current_user: str = Depends(get_current_user),
+) -> ActivityLog:
+    try:
+        entries = get_board_activity(board_id, current_user)
+        return ActivityLog(board_id=board_id, entries=entries)
     except PermissionError:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
     except ValueError:

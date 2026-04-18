@@ -79,6 +79,30 @@ describe("AuthGate", () => {
         });
       }
 
+      // Stats endpoint
+      if (url.includes("/stats")) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({
+            board_id: "board-1",
+            total_cards: 0,
+            overdue_count: 0,
+            columns: [],
+            priority_breakdown: { low: 0, medium: 0, high: 0, urgent: 0, none: 0 },
+          }),
+        });
+      }
+
+      // Activity endpoint
+      if (url.includes("/activity")) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({ board_id: "board-1", entries: [] }),
+        });
+      }
+
       // Board data endpoints
       return Promise.resolve({
         ok: true,

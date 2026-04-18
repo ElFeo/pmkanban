@@ -100,3 +100,37 @@ class UserProfile(BaseModel):
 class ChangePasswordRequest(BaseModel):
     current_password: str = Field(min_length=1, max_length=200)
     new_password: str = Field(min_length=8, max_length=200)
+
+
+class ColumnStats(BaseModel):
+    column_id: str
+    column_title: str
+    card_count: int
+
+
+class PriorityBreakdown(BaseModel):
+    low: int = 0
+    medium: int = 0
+    high: int = 0
+    urgent: int = 0
+    none: int = 0
+
+
+class BoardStats(BaseModel):
+    board_id: str
+    total_cards: int
+    overdue_count: int
+    columns: list[ColumnStats]
+    priority_breakdown: PriorityBreakdown
+
+
+class ActivityEntry(BaseModel):
+    id: str
+    action: str
+    detail: str
+    created_at: str
+
+
+class ActivityLog(BaseModel):
+    board_id: str
+    entries: list[ActivityEntry]

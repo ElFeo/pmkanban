@@ -2,6 +2,7 @@
 
 import { useEffect, useState, type FormEvent } from "react";
 import { BoardSelector } from "@/components/BoardSelector";
+import { BoardStatsPanel } from "@/components/BoardStatsPanel";
 import { ChatSidebar } from "@/components/ChatSidebar";
 import { KanbanBoard } from "@/components/KanbanBoard";
 import { UserProfileModal } from "@/components/UserProfileModal";
@@ -44,6 +45,7 @@ export const AuthGate = () => {
   const [chatSending, setChatSending] = useState(false);
   const [chatError, setChatError] = useState<string | null>(null);
   const [showProfile, setShowProfile] = useState(false);
+  const [statsRefreshKey, setStatsRefreshKey] = useState(0);
 
   // Restore session from sessionStorage on mount
   useEffect(() => {
@@ -155,6 +157,7 @@ export const AuthGate = () => {
       .then((saved) => {
         setBoard(saved);
         setError(null);
+        setStatsRefreshKey((k) => k + 1);
       })
       .catch(() => {
         setBoard(prevBoard);
@@ -312,14 +315,17 @@ export const AuthGate = () => {
               Loading board...
             </div>
           ) : (
-            <div className="mx-auto grid max-w-[1600px] grid-cols-1 gap-6 px-6 pb-16 pt-6 xl:grid-cols-[1fr_360px]">
+            <div className="mx-auto grid max-w-[1600px] grid-cols-1 gap-6 px-6 pb-16 pt-6 xl:grid-cols-[1fr_340px]">
               <KanbanBoard board={board} onBoardChange={handleBoardChange} />
-              <ChatSidebar
-                messages={chatHistory}
-                onSend={handleSendChat}
-                isSending={chatSending}
-                error={chatError}
-              />
+              <div className="flex flex-col gap-4">
+                <BoardStatsPanel boardId={activeBoardId} refreshKey={statsRefreshKey} />
+                <ChatSidebar
+                  messages={chatHistory}
+                  onSend={handleSendChat}
+                  isSending={chatSending}
+                  error={chatError}
+                />
+              </div>
             </div>
           )}
         </div>

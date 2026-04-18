@@ -104,6 +104,20 @@ def init_db() -> None:
         conn.execute("CREATE INDEX IF NOT EXISTS idx_cards_board ON cards(board_id)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_cards_column ON cards(column_id, position)")
 
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS board_activity (
+                id TEXT PRIMARY KEY,
+                board_id TEXT NOT NULL,
+                action TEXT NOT NULL,
+                detail TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL,
+                FOREIGN KEY(board_id) REFERENCES boards(id)
+            )
+            """
+        )
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_activity_board ON board_activity(board_id, created_at)")
+
         # Migrate existing cards tables that lack new columns
         for col_def in [
             "ALTER TABLE cards ADD COLUMN priority TEXT",
@@ -291,6 +305,7 @@ def delete_board(board_id: str, username: str) -> None:
         _assert_board_owner(conn, board_id, username)
         conn.execute("DELETE FROM cards WHERE board_id = ?", (board_id,))
         conn.execute("DELETE FROM columns WHERE board_id = ?", (board_id,))
+        conn.execute("DELETE FROM board_activity WHERE board_id = ?", (board_id,))
         conn.execute("DELETE FROM boards WHERE id = ?", (board_id,))
 
 
@@ -440,3 +455,78 @@ def get_board(username: str) -> BoardData:
 def save_board(username: str, board: BoardData) -> BoardData:
     board_id = get_or_create_first_board_id(username)
     return save_board_by_id(board_id, username, board)
+
+
+# ---------------------------------------------------------------------------
+# Activity log
+# ---------------------------------------------------------------------------
+
+def log_activity(board_id: str, action: str, detail: str = "") -> None:
+    """Append an activity entry to the board's log."""
+    with get_connection() as conn:
+        conn.execute(
+            "INSERT INTO board_activity (id, board_id, action, detail, created_at) VALUES (?, ?, ?, ?, ?)",
+            (_new_id(), board_id, action, detail, _now()),
+        )
+
+
+def get_board_activity(board_id: str, username: str, limit: int = 30) -> list[dict]:
+    """Return recent activity entries for a board, enforcing ownership."""
+    with get_connection() as conn:
+        _assert_board_owner(conn, board_id, username)
+        rows = conn.execute(
+            "SELECT id, action, detail, created_at FROM board_activity WHERE board_id = ? ORDER BY created_at DESC LIMIT ?",
+            (board_id, limit),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+
+# ---------------------------------------------------------------------------
+# Board statistics
+# ---------------------------------------------------------------------------
+
+def get_board_stats(board_id: str, username: str) -> dict:
+    """Return aggregate stats for a board: card counts per column, priority breakdown, overdue count."""
+    from datetime import date
+    today = date.today().isoformat()
+
+    with get_connection() as conn:
+        _assert_board_owner(conn, board_id, username)
+
+        col_rows = conn.execute(
+            """
+            SELECT col.id AS column_id, col.title AS column_title, COUNT(c.id) AS card_count
+            FROM columns col
+            LEFT JOIN cards c ON c.column_id = col.id AND c.board_id = col.board_id
+            WHERE col.board_id = ?
+            GROUP BY col.id, col.title
+            ORDER BY col.position
+            """,
+            (board_id,),
+        ).fetchall()
+
+        priority_rows = conn.execute(
+            "SELECT priority, COUNT(*) AS cnt FROM cards WHERE board_id = ? GROUP BY priority",
+            (board_id,),
+        ).fetchall()
+
+        overdue_row = conn.execute(
+            "SELECT COUNT(*) AS cnt FROM cards WHERE board_id = ? AND due_date IS NOT NULL AND due_date < ?",
+            (board_id, today),
+        ).fetchone()
+
+        columns = [{"column_id": r["column_id"], "column_title": r["column_title"], "card_count": r["card_count"]} for r in col_rows]
+        total = sum(c["card_count"] for c in columns)
+
+        priority_map: dict[str, int] = {"low": 0, "medium": 0, "high": 0, "urgent": 0, "none": 0}
+        for row in priority_rows:
+            key = row["priority"] if row["priority"] else "none"
+            priority_map[key] = row["cnt"]
+
+        return {
+            "board_id": board_id,
+            "total_cards": total,
+            "overdue_count": overdue_row["cnt"] if overdue_row else 0,
+            "columns": columns,
+            "priority_breakdown": priority_map,
+        }
