@@ -94,6 +94,7 @@ def init_db() -> None:
                 due_date TEXT,
                 labels TEXT NOT NULL DEFAULT '[]',
                 archived INTEGER NOT NULL DEFAULT 0,
+                assignee TEXT,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL,
                 FOREIGN KEY(board_id) REFERENCES boards(id),
@@ -141,6 +142,7 @@ def init_db() -> None:
             "ALTER TABLE cards ADD COLUMN due_date TEXT",
             "ALTER TABLE cards ADD COLUMN labels TEXT NOT NULL DEFAULT '[]'",
             "ALTER TABLE cards ADD COLUMN archived INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE cards ADD COLUMN assignee TEXT",
             "ALTER TABLE columns ADD COLUMN wip_limit INTEGER",
         ]:
             try:
@@ -374,13 +376,13 @@ def _insert_board_data(conn: sqlite3.Connection, board_id: str, board: BoardData
                 raise ValueError(f"Column '{column.id}' references missing card '{card_id}'")
             conn.execute(
                 """
-                INSERT INTO cards (id, board_id, column_id, title, details, priority, due_date, labels, archived, position, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO cards (id, board_id, column_id, title, details, priority, due_date, labels, archived, assignee, position, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     card.id, board_id, column.id, card.title, card.details,
                     card.priority, card.due_date, json.dumps(card.labels),
-                    1 if card.archived else 0,
+                    1 if card.archived else 0, card.assignee,
                     card_index, now, now,
                 ),
             )
@@ -397,7 +399,7 @@ def _read_board_data(conn: sqlite3.Connection, board_id: str) -> BoardData:
         (board_id,),
     ).fetchall()
     card_rows = conn.execute(
-        "SELECT id, column_id, title, details, priority, due_date, labels, archived FROM cards WHERE board_id = ? ORDER BY column_id, position",
+        "SELECT id, column_id, title, details, priority, due_date, labels, archived, assignee FROM cards WHERE board_id = ? ORDER BY column_id, position",
         (board_id,),
     ).fetchall()
 
@@ -413,6 +415,7 @@ def _read_board_data(conn: sqlite3.Connection, board_id: str) -> BoardData:
             due_date=row["due_date"],
             labels=labels,
             archived=bool(row["archived"]),
+            assignee=row["assignee"],
         )
         cards[card.id] = card
         card_ids_by_column[row["column_id"]].append(card.id)
@@ -553,6 +556,60 @@ def delete_comment(board_id: str, card_id: str, comment_id: str, username: str) 
         if row["author"] != username:
             raise PermissionError("Cannot delete another user's comment")
         conn.execute("DELETE FROM card_comments WHERE id = ?", (comment_id,))
+
+
+def list_users() -> list[str]:
+    """Return list of all registered usernames (for assignee dropdowns)."""
+    with get_connection() as conn:
+        rows = conn.execute(
+            "SELECT username FROM users ORDER BY username ASC"
+        ).fetchall()
+        return [row["username"] for row in rows]
+
+
+def get_my_tasks(username: str) -> list[dict]:
+    """Return all cards assigned to username, across all boards the user owns."""
+    with get_connection() as conn:
+        rows = conn.execute(
+            """
+            SELECT
+                c.id AS card_id,
+                c.board_id,
+                b.title AS board_title,
+                col.title AS column_title,
+                c.title,
+                c.details,
+                c.priority,
+                c.due_date,
+                c.labels,
+                c.archived,
+                c.assignee
+            FROM cards c
+            JOIN boards b ON b.id = c.board_id
+            JOIN users u ON u.id = b.user_id
+            JOIN columns col ON col.id = c.column_id
+            WHERE c.assignee = ? AND u.username = ?
+            ORDER BY c.due_date ASC NULLS LAST, b.title ASC, c.title ASC
+            """,
+            (username, username),
+        ).fetchall()
+        result = []
+        for row in rows:
+            labels = json.loads(row["labels"]) if row["labels"] else []
+            result.append({
+                "card_id": row["card_id"],
+                "board_id": row["board_id"],
+                "board_title": row["board_title"],
+                "column_title": row["column_title"],
+                "title": row["title"],
+                "details": row["details"],
+                "priority": row["priority"],
+                "due_date": row["due_date"],
+                "labels": labels,
+                "archived": bool(row["archived"]),
+                "assignee": row["assignee"],
+            })
+        return result
 
 
 def get_board_stats(board_id: str, username: str) -> dict:

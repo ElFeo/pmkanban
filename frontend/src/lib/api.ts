@@ -170,6 +170,36 @@ export const deleteBoard = async (boardId: string): Promise<void> => {
 };
 
 // ---------------------------------------------------------------------------
+// Users + My Tasks
+// ---------------------------------------------------------------------------
+
+export const listUsers = async (): Promise<string[]> => {
+  const response = await fetch("/api/users", { headers: getAuthHeaders() });
+  const data = await readJson<{ usernames: string[] }>(response);
+  return data.usernames;
+};
+
+export type TaskCard = {
+  card_id: string;
+  board_id: string;
+  board_title: string;
+  column_title: string;
+  title: string;
+  details: string;
+  priority?: string | null;
+  due_date?: string | null;
+  labels: string[];
+  archived: boolean;
+  assignee: string | null;
+};
+
+export const getMyTasks = async (): Promise<TaskCard[]> => {
+  const response = await fetch("/api/me/tasks", { headers: getAuthHeaders() });
+  const data = await readJson<{ assignee: string; tasks: TaskCard[] }>(response);
+  return data.tasks;
+};
+
+// ---------------------------------------------------------------------------
 // Card comments
 // ---------------------------------------------------------------------------
 

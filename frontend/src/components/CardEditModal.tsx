@@ -3,6 +3,7 @@
 import { useState, type FormEvent, useEffect } from "react";
 import type { Card, Priority } from "@/lib/kanban";
 import { CardCommentsPanel } from "@/components/CardCommentsPanel";
+import { listUsers } from "@/lib/api";
 
 const PRIORITIES: { value: Priority; label: string }[] = [
   { value: "low", label: "Low" },
@@ -27,7 +28,13 @@ export const CardEditModal = ({ card, boardId, currentUser, onSave, onClose }: C
     due_date: card.due_date ?? "",
     labels: (card.labels ?? []).join(", "),
     archived: card.archived ?? false,
+    assignee: card.assignee ?? "",
   });
+  const [users, setUsers] = useState<string[]>([]);
+
+  useEffect(() => {
+    listUsers().then(setUsers).catch(() => null);
+  }, []);
 
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
@@ -52,6 +59,7 @@ export const CardEditModal = ({ card, boardId, currentUser, onSave, onClose }: C
       due_date: formState.due_date || null,
       labels,
       archived: formState.archived,
+      assignee: formState.assignee || null,
     });
     onClose();
   };
@@ -126,6 +134,22 @@ export const CardEditModal = ({ card, boardId, currentUser, onSave, onClose }: C
                 className="w-full rounded-xl border border-[var(--stroke)] bg-white px-3 py-2 text-sm text-[var(--gray-text)] outline-none transition focus:border-[var(--primary-blue)]"
               />
             </div>
+          </div>
+
+          <div>
+            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-[var(--gray-text)]">
+              Assignee
+            </label>
+            <select
+              value={formState.assignee}
+              onChange={(e) => setFormState((p) => ({ ...p, assignee: e.target.value }))}
+              className="w-full rounded-xl border border-[var(--stroke)] bg-white px-3 py-2 text-sm text-[var(--gray-text)] outline-none transition focus:border-[var(--primary-blue)]"
+            >
+              <option value="">Unassigned</option>
+              {users.map((u) => (
+                <option key={u} value={u}>{u}</option>
+              ))}
+            </select>
           </div>
 
           <div>

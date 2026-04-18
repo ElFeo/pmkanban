@@ -146,7 +146,49 @@ export const KanbanBoard = ({ board, boardId, currentUser, onBoardChange }: Kanb
 
   const activeCard = activeCardId ? cardsById[activeCardId] : null;
 
+  const [filterPriority, setFilterPriority] = useState<string>("");
+  const [filterAssignee, setFilterAssignee] = useState<string>("");
+  const [filterDue, setFilterDue] = useState<string>("");
+  const [hideArchived, setHideArchived] = useState(false);
+
+  const allLabels = useMemo(() => {
+    const set = new Set<string>();
+    Object.values(localBoard.cards).forEach((c) => (c.labels ?? []).forEach((l) => set.add(l)));
+    return Array.from(set).sort();
+  }, [localBoard.cards]);
+
+  const [filterLabel, setFilterLabel] = useState<string>("");
+
+  const allAssignees = useMemo(() => {
+    const set = new Set<string>();
+    Object.values(localBoard.cards).forEach((c) => { if (c.assignee) set.add(c.assignee); });
+    return Array.from(set).sort();
+  }, [localBoard.cards]);
+
+  const hasActiveFilter = !!(searchQuery.trim() || filterPriority || filterAssignee || filterDue || filterLabel || hideArchived);
+
+  const clearFilters = () => {
+    setSearchQuery("");
+    setFilterPriority("");
+    setFilterAssignee("");
+    setFilterDue("");
+    setFilterLabel("");
+    setHideArchived(false);
+  };
+
   const matchesSearch = useCallback((card: Card): boolean => {
+    if (hideArchived && card.archived) return false;
+    if (filterPriority && card.priority !== filterPriority) return false;
+    if (filterLabel && !(card.labels ?? []).includes(filterLabel)) return false;
+    if (filterAssignee && card.assignee !== filterAssignee) return false;
+    if (filterDue === "overdue") {
+      if (!card.due_date || new Date(card.due_date).getTime() >= Date.now()) return false;
+    } else if (filterDue === "soon") {
+      const diff = card.due_date ? new Date(card.due_date).getTime() - Date.now() : null;
+      if (diff === null || diff < 0 || diff >= 3 * 24 * 60 * 60 * 1000) return false;
+    } else if (filterDue === "none") {
+      if (card.due_date) return false;
+    }
     if (!searchQuery.trim()) return true;
     const q = searchQuery.toLowerCase();
     return (
@@ -154,7 +196,7 @@ export const KanbanBoard = ({ board, boardId, currentUser, onBoardChange }: Kanb
       (card.details ?? "").toLowerCase().includes(q) ||
       (card.labels ?? []).some((l) => l.toLowerCase().includes(q))
     );
-  }, [searchQuery]);
+  }, [searchQuery, filterPriority, filterLabel, filterAssignee, filterDue, hideArchived]);
 
   const handleExport = () => {
     const blob = new Blob([JSON.stringify(localBoard, null, 2)], { type: "application/json" });
@@ -234,24 +276,79 @@ export const KanbanBoard = ({ board, boardId, currentUser, onBoardChange }: Kanb
             </button>
           </div>
 
-          {/* Search bar */}
-          <div className="relative">
-            <input
-              ref={searchRef}
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search cards… (Ctrl+K)"
-              aria-label="Search cards"
-              className="w-full rounded-xl border border-[var(--stroke)] bg-white px-4 py-2 text-sm text-[var(--navy-dark)] outline-none transition focus:border-[var(--primary-blue)] xl:max-w-sm"
-            />
-            {searchQuery && (
+          {/* Filter bar */}
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="relative">
+              <input
+                ref={searchRef}
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search cards… (Ctrl+K)"
+                aria-label="Search cards"
+                className="w-52 rounded-xl border border-[var(--stroke)] bg-white px-4 py-2 text-sm text-[var(--navy-dark)] outline-none transition focus:border-[var(--primary-blue)]"
+              />
+            </div>
+            <select
+              value={filterPriority}
+              onChange={(e) => setFilterPriority(e.target.value)}
+              aria-label="Filter by priority"
+              className="rounded-xl border border-[var(--stroke)] bg-white px-3 py-2 text-sm text-[var(--gray-text)] outline-none transition focus:border-[var(--primary-blue)]"
+            >
+              <option value="">All priorities</option>
+              <option value="urgent">Urgent</option>
+              <option value="high">High</option>
+              <option value="medium">Medium</option>
+              <option value="low">Low</option>
+            </select>
+            {allLabels.length > 0 && (
+              <select
+                value={filterLabel}
+                onChange={(e) => setFilterLabel(e.target.value)}
+                aria-label="Filter by label"
+                className="rounded-xl border border-[var(--stroke)] bg-white px-3 py-2 text-sm text-[var(--gray-text)] outline-none transition focus:border-[var(--primary-blue)]"
+              >
+                <option value="">All labels</option>
+                {allLabels.map((l) => <option key={l} value={l}>{l}</option>)}
+              </select>
+            )}
+            {allAssignees.length > 0 && (
+              <select
+                value={filterAssignee}
+                onChange={(e) => setFilterAssignee(e.target.value)}
+                aria-label="Filter by assignee"
+                className="rounded-xl border border-[var(--stroke)] bg-white px-3 py-2 text-sm text-[var(--gray-text)] outline-none transition focus:border-[var(--primary-blue)]"
+              >
+                <option value="">All assignees</option>
+                {allAssignees.map((a) => <option key={a} value={a}>{a}</option>)}
+              </select>
+            )}
+            <select
+              value={filterDue}
+              onChange={(e) => setFilterDue(e.target.value)}
+              aria-label="Filter by due date"
+              className="rounded-xl border border-[var(--stroke)] bg-white px-3 py-2 text-sm text-[var(--gray-text)] outline-none transition focus:border-[var(--primary-blue)]"
+            >
+              <option value="">All due dates</option>
+              <option value="overdue">Overdue</option>
+              <option value="soon">Due soon</option>
+              <option value="none">No due date</option>
+            </select>
+            <label className="flex cursor-pointer items-center gap-2 text-xs font-semibold text-[var(--gray-text)]">
+              <input
+                type="checkbox"
+                checked={hideArchived}
+                onChange={(e) => setHideArchived(e.target.checked)}
+                className="h-4 w-4 accent-[var(--secondary-purple)]"
+              />
+              Hide archived
+            </label>
+            {hasActiveFilter && (
               <button
                 type="button"
-                onClick={() => setSearchQuery("")}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-[var(--gray-text)] hover:text-[var(--navy-dark)]"
-                aria-label="Clear search"
+                onClick={clearFilters}
+                className="rounded-full border border-[var(--stroke)] px-3 py-1.5 text-xs font-semibold text-[var(--gray-text)] transition hover:text-red-500"
               >
-                Clear
+                Clear filters
               </button>
             )}
           </div>

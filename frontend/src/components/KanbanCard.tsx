@@ -124,6 +124,16 @@ export const KanbanCard = ({ card, boardId, currentUser, onDelete, onEdit }: Kan
           {dueDateStatus(card.due_date) === "overdue" && " · Overdue"}
         </p>
       )}
+
+      {/* Assignee */}
+      {card.assignee && (
+        <div className="mt-2 flex items-center gap-1.5">
+          <div className="flex h-5 w-5 items-center justify-center rounded-full bg-[var(--secondary-purple)] text-[9px] font-bold text-white">
+            {card.assignee[0].toUpperCase()}
+          </div>
+          <span className="text-[11px] text-[var(--gray-text)]">{card.assignee}</span>
+        </div>
+      )}
     </article>
     </>
   );

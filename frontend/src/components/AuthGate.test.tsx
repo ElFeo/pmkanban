@@ -103,6 +103,42 @@ describe("AuthGate", () => {
         });
       }
 
+      // My tasks endpoint
+      if (url.includes("/me/tasks")) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({ assignee: "user", tasks: [] }),
+        });
+      }
+
+      // Users list endpoint
+      if (url.includes("/api/users")) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({ usernames: ["user"] }),
+        });
+      }
+
+      // User profile endpoint
+      if (url.includes("/api/me")) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({ username: "user", board_count: 1, created_at: "2026-01-01" }),
+        });
+      }
+
+      // Comments endpoints
+      if (url.includes("/comments")) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({ card_id: "", comments: [] }),
+        });
+      }
+
       // Board data endpoints
       return Promise.resolve({
         ok: true,

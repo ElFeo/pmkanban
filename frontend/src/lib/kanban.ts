@@ -8,6 +8,7 @@ export type Card = {
   due_date?: string | null;
   labels?: string[];
   archived?: boolean;
+  assignee?: string | null;
 };
 
 export type Column = {

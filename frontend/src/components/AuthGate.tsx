@@ -5,6 +5,7 @@ import { BoardSelector } from "@/components/BoardSelector";
 import { BoardStatsPanel } from "@/components/BoardStatsPanel";
 import { ChatSidebar } from "@/components/ChatSidebar";
 import { KanbanBoard } from "@/components/KanbanBoard";
+import { MyTasksPanel } from "@/components/MyTasksPanel";
 import { UserProfileModal } from "@/components/UserProfileModal";
 import {
   createBoard,
@@ -318,6 +319,7 @@ export const AuthGate = () => {
             <div className="mx-auto grid max-w-[1600px] grid-cols-1 gap-6 px-6 pb-16 pt-6 xl:grid-cols-[1fr_340px]">
               <KanbanBoard board={board} boardId={activeBoardId} currentUser={loggedInUsername ?? ""} onBoardChange={handleBoardChange} />
               <div className="flex flex-col gap-4">
+                <MyTasksPanel currentUser={loggedInUsername ?? ""} />
                 <BoardStatsPanel boardId={activeBoardId} refreshKey={statsRefreshKey} />
                 <ChatSidebar
                   messages={chatHistory}

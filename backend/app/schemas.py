@@ -17,6 +17,7 @@ class Card(BaseModel):
     )
     labels: list[str] = Field(default_factory=list, max_length=10)
     archived: bool = False
+    assignee: str | None = Field(default=None, max_length=100)
 
 
 class Column(BaseModel):
@@ -136,6 +137,30 @@ class ActivityEntry(BaseModel):
 class ActivityLog(BaseModel):
     board_id: str
     entries: list[ActivityEntry]
+
+
+class UserListResponse(BaseModel):
+    usernames: list[str]
+
+
+class TaskCard(BaseModel):
+    """A card with board context, used in the My Tasks view."""
+    card_id: str
+    board_id: str
+    board_title: str
+    column_title: str
+    title: str
+    details: str
+    priority: Priority | None = None
+    due_date: str | None = None
+    labels: list[str] = Field(default_factory=list)
+    archived: bool = False
+    assignee: str | None = None
+
+
+class MyTasksResponse(BaseModel):
+    assignee: str
+    tasks: list[TaskCard]
 
 
 class CommentCreate(BaseModel):

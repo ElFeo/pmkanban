@@ -54,11 +54,11 @@ describe("KanbanBoard search", () => {
     expect(screen.getByText("Deploy release")).toBeTruthy();
   });
 
-  it("shows Clear button when query is non-empty", () => {
+  it("shows Clear filters button when query is non-empty", () => {
     render(<KanbanBoard board={makeBoard()} onBoardChange={vi.fn()} />);
-    expect(screen.queryByLabelText("Clear search")).toBeNull();
+    expect(screen.queryByText("Clear filters")).toBeNull();
     fireEvent.change(screen.getByLabelText("Search cards"), { target: { value: "x" } });
-    expect(screen.getByLabelText("Clear search")).toBeTruthy();
+    expect(screen.getByText("Clear filters")).toBeTruthy();
   });
 
   it("Export JSON button is present", () => {

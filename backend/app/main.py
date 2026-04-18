@@ -24,11 +24,13 @@ from .db import (
     get_board_by_id,
     get_board_stats,
     get_comments,
+    get_my_tasks,
     get_or_create_first_board_id,
     get_user_by_username,
     get_user_profile,
     init_db,
     list_boards,
+    list_users,
     log_activity,
     rename_board,
     save_board_by_id,
@@ -51,8 +53,10 @@ from .schemas import (
     CommentList,
     LoginRequest,
     LoginResponse,
+    MyTasksResponse,
     RegisterRequest,
     RegisterResponse,
+    UserListResponse,
     UserProfile,
 )
 
@@ -482,6 +486,17 @@ def change_password(
     if not verify_password(request.current_password, user["password_hash"]):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Current password is incorrect")
     update_user_password(current_user, hash_password(request.new_password))
+
+
+@app.get("/api/me/tasks", response_model=MyTasksResponse)
+def get_my_tasks_route(current_user: str = Depends(get_current_user)) -> MyTasksResponse:
+    tasks = get_my_tasks(current_user)
+    return MyTasksResponse(assignee=current_user, tasks=tasks)
+
+
+@app.get("/api/users", response_model=UserListResponse)
+def get_users(_: str = Depends(get_current_user)) -> UserListResponse:
+    return UserListResponse(usernames=list_users())
 
 
 # ---------------------------------------------------------------------------
