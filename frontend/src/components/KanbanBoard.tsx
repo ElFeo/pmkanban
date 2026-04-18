@@ -13,7 +13,7 @@ import {
 } from "@dnd-kit/core";
 import { KanbanColumn } from "@/components/KanbanColumn";
 import { KanbanCardPreview } from "@/components/KanbanCardPreview";
-import { createId, moveCard, type BoardData } from "@/lib/kanban";
+import { createId, moveCard, type BoardData, type Card } from "@/lib/kanban";
 
 type KanbanBoardProps = {
   board: BoardData;
@@ -95,6 +95,34 @@ export const KanbanBoard = ({ board, onBoardChange }: KanbanBoardProps) => {
     });
   };
 
+  const handleEditCard = (_columnId: string, updated: Card) => {
+    updateBoard({
+      ...localBoard,
+      cards: { ...localBoard.cards, [updated.id]: updated },
+    });
+  };
+
+  const handleAddColumn = () => {
+    const id = createId("col");
+    updateBoard({
+      ...localBoard,
+      columns: [...localBoard.columns, { id, title: "New Column", cardIds: [] }],
+    });
+  };
+
+  const handleDeleteColumn = (columnId: string) => {
+    const col = localBoard.columns.find((c) => c.id === columnId);
+    if (!col) return;
+    const remainingCards = Object.fromEntries(
+      Object.entries(localBoard.cards).filter(([id]) => !col.cardIds.includes(id))
+    );
+    updateBoard({
+      ...localBoard,
+      columns: localBoard.columns.filter((c) => c.id !== columnId),
+      cards: remainingCards,
+    });
+  };
+
   const handleDeleteCard = (columnId: string, cardId: string) => {
     updateBoard({
       ...localBoard,
@@ -153,6 +181,13 @@ export const KanbanBoard = ({ board, onBoardChange }: KanbanBoardProps) => {
                 {column.title}
               </div>
             ))}
+            <button
+              type="button"
+              onClick={handleAddColumn}
+              className="rounded-full border border-dashed border-[var(--stroke)] px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-[var(--primary-blue)] transition hover:border-[var(--primary-blue)]"
+            >
+              + Add column
+            </button>
           </div>
         </header>
 
@@ -162,15 +197,18 @@ export const KanbanBoard = ({ board, onBoardChange }: KanbanBoardProps) => {
           onDragStart={handleDragStart}
           onDragEnd={handleDragEnd}
         >
-          <section className="grid gap-6 lg:grid-cols-5">
+          <section className="grid gap-6" style={{ gridTemplateColumns: `repeat(${localBoard.columns.length}, minmax(240px, 1fr))` }}>
             {localBoard.columns.map((column) => (
               <KanbanColumn
                 key={column.id}
                 column={column}
-                cards={column.cardIds.map((cardId) => localBoard.cards[cardId])}
+                cards={column.cardIds.map((cardId) => localBoard.cards[cardId]).filter(Boolean)}
+                canDelete={localBoard.columns.length > 1}
                 onRename={handleRenameColumn}
+                onDelete={handleDeleteColumn}
                 onAddCard={handleAddCard}
                 onDeleteCard={handleDeleteCard}
+                onEditCard={handleEditCard}
               />
             ))}
           </section>

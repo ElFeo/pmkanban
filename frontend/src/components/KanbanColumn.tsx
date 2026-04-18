@@ -8,17 +8,23 @@ import { NewCardForm } from "@/components/NewCardForm";
 type KanbanColumnProps = {
   column: Column;
   cards: Card[];
+  canDelete: boolean;
   onRename: (columnId: string, title: string) => void;
+  onDelete: (columnId: string) => void;
   onAddCard: (columnId: string, title: string, details: string, priority?: Priority | null, due_date?: string | null, labels?: string[]) => void;
   onDeleteCard: (columnId: string, cardId: string) => void;
+  onEditCard: (columnId: string, updated: Card) => void;
 };
 
 export const KanbanColumn = ({
   column,
   cards,
+  canDelete,
   onRename,
+  onDelete,
   onAddCard,
   onDeleteCard,
+  onEditCard,
 }: KanbanColumnProps) => {
   const { setNodeRef, isOver } = useDroppable({ id: column.id });
 
@@ -33,11 +39,23 @@ export const KanbanColumn = ({
     >
       <div className="flex items-start justify-between gap-3">
         <div className="w-full">
-          <div className="flex items-center gap-3">
-            <div className="h-2 w-10 rounded-full bg-[var(--accent-yellow)]" />
-            <span className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--gray-text)]">
-              {cards.length} cards
-            </span>
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="h-2 w-10 rounded-full bg-[var(--accent-yellow)]" />
+              <span className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--gray-text)]">
+                {cards.length} cards
+              </span>
+            </div>
+            {canDelete && (
+              <button
+                type="button"
+                onClick={() => onDelete(column.id)}
+                className="rounded-full border border-transparent px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--gray-text)] transition hover:border-red-200 hover:text-red-500"
+                aria-label={`Delete ${column.title} column`}
+              >
+                Delete col
+              </button>
+            )}
           </div>
           <input
             value={column.title}
@@ -54,6 +72,7 @@ export const KanbanColumn = ({
               key={card.id}
               card={card}
               onDelete={(cardId) => onDeleteCard(column.id, cardId)}
+              onEdit={(updated) => onEditCard(column.id, updated)}
             />
           ))}
         </SortableContext>

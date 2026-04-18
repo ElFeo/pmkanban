@@ -4,6 +4,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { BoardSelector } from "@/components/BoardSelector";
 import { ChatSidebar } from "@/components/ChatSidebar";
 import { KanbanBoard } from "@/components/KanbanBoard";
+import { UserProfileModal } from "@/components/UserProfileModal";
 import {
   createBoard,
   deleteBoard,
@@ -42,6 +43,7 @@ export const AuthGate = () => {
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
   const [chatSending, setChatSending] = useState(false);
   const [chatError, setChatError] = useState<string | null>(null);
+  const [showProfile, setShowProfile] = useState(false);
 
   // Restore session from sessionStorage on mount
   useEffect(() => {
@@ -244,6 +246,12 @@ export const AuthGate = () => {
 
     return (
       <div className="relative">
+        {showProfile && loggedInUsername && (
+          <UserProfileModal
+            username={loggedInUsername}
+            onClose={() => setShowProfile(false)}
+          />
+        )}
         {/* Top bar */}
         <div className="fixed left-0 right-0 top-0 z-50 flex items-center justify-between border-b border-[var(--stroke)] bg-white/90 px-6 py-3 backdrop-blur">
           <div className="flex items-center gap-3">
@@ -262,9 +270,13 @@ export const AuthGate = () => {
             )}
           </div>
           <div className="flex items-center gap-3">
-            <span className="text-xs text-[var(--gray-text)]">
+            <button
+              type="button"
+              onClick={() => setShowProfile(true)}
+              className="rounded-full border border-[var(--stroke)] bg-white px-4 py-1.5 text-xs font-semibold uppercase tracking-wide text-[var(--navy-dark)] shadow-[var(--shadow)] transition hover:border-[var(--primary-blue)]"
+            >
               {loggedInUsername}
-            </span>
+            </button>
             <button
               type="button"
               onClick={handleLogout}

@@ -2,10 +2,13 @@ import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import clsx from "clsx";
 import type { Card, Priority } from "@/lib/kanban";
+import { useState } from "react";
+import { CardEditModal } from "@/components/CardEditModal";
 
 type KanbanCardProps = {
   card: Card;
   onDelete: (cardId: string) => void;
+  onEdit: (updated: Card) => void;
 };
 
 const PRIORITY_STYLES: Record<Priority, { label: string; cls: string }> = {
@@ -22,15 +25,24 @@ const dueDateStatus = (due: string): "overdue" | "soon" | "ok" => {
   return "ok";
 };
 
-export const KanbanCard = ({ card, onDelete }: KanbanCardProps) => {
+export const KanbanCard = ({ card, onDelete, onEdit }: KanbanCardProps) => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: card.id });
+  const [editing, setEditing] = useState(false);
 
   const style = { transform: CSS.Transform.toString(transform), transition };
   const priority = card.priority ? PRIORITY_STYLES[card.priority] : null;
   const labels = card.labels ?? [];
 
   return (
+    <>
+    {editing && (
+      <CardEditModal
+        card={card}
+        onSave={onEdit}
+        onClose={() => setEditing(false)}
+      />
+    )}
     <article
       ref={setNodeRef}
       style={style}
@@ -60,14 +72,24 @@ export const KanbanCard = ({ card, onDelete }: KanbanCardProps) => {
             </span>
           ))}
         </div>
-        <button
-          type="button"
-          onClick={() => onDelete(card.id)}
-          className="shrink-0 rounded-full border border-transparent px-2 py-1 text-xs font-semibold text-[var(--gray-text)] transition hover:border-[var(--stroke)] hover:text-[var(--navy-dark)]"
-          aria-label={`Delete ${card.title}`}
-        >
-          Remove
-        </button>
+        <div className="flex shrink-0 gap-1">
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); setEditing(true); }}
+            className="rounded-full border border-transparent px-2 py-1 text-xs font-semibold text-[var(--gray-text)] transition hover:border-[var(--stroke)] hover:text-[var(--primary-blue)]"
+            aria-label={`Edit ${card.title}`}
+          >
+            Edit
+          </button>
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onDelete(card.id); }}
+            className="rounded-full border border-transparent px-2 py-1 text-xs font-semibold text-[var(--gray-text)] transition hover:border-[var(--stroke)] hover:text-[var(--navy-dark)]"
+            aria-label={`Delete ${card.title}`}
+          >
+            Remove
+          </button>
+        </div>
       </div>
 
       {/* Title + details */}
@@ -93,5 +115,6 @@ export const KanbanCard = ({ card, onDelete }: KanbanCardProps) => {
         </p>
       )}
     </article>
+    </>
   );
 };
