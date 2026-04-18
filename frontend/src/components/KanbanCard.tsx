@@ -7,6 +7,8 @@ import { CardEditModal } from "@/components/CardEditModal";
 
 type KanbanCardProps = {
   card: Card;
+  boardId: string;
+  currentUser: string;
   onDelete: (cardId: string) => void;
   onEdit: (updated: Card) => void;
 };
@@ -25,7 +27,7 @@ const dueDateStatus = (due: string): "overdue" | "soon" | "ok" => {
   return "ok";
 };
 
-export const KanbanCard = ({ card, onDelete, onEdit }: KanbanCardProps) => {
+export const KanbanCard = ({ card, boardId, currentUser, onDelete, onEdit }: KanbanCardProps) => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: card.id });
   const [editing, setEditing] = useState(false);
@@ -39,6 +41,8 @@ export const KanbanCard = ({ card, onDelete, onEdit }: KanbanCardProps) => {
     {editing && (
       <CardEditModal
         card={card}
+        boardId={boardId}
+        currentUser={currentUser}
         onSave={onEdit}
         onClose={() => setEditing(false)}
       />
@@ -49,7 +53,8 @@ export const KanbanCard = ({ card, onDelete, onEdit }: KanbanCardProps) => {
       className={clsx(
         "rounded-2xl border border-transparent bg-white px-4 py-4 shadow-[0_12px_24px_rgba(3,33,71,0.08)]",
         "transition-all duration-150",
-        isDragging && "opacity-60 shadow-[0_18px_32px_rgba(3,33,71,0.16)]"
+        isDragging && "opacity-60 shadow-[0_18px_32px_rgba(3,33,71,0.16)]",
+        card.archived && "opacity-50"
       )}
       {...attributes}
       {...listeners}
@@ -58,6 +63,11 @@ export const KanbanCard = ({ card, onDelete, onEdit }: KanbanCardProps) => {
       {/* Priority + delete row */}
       <div className="mb-2 flex items-center justify-between gap-2">
         <div className="flex flex-wrap gap-1">
+          {card.archived && (
+            <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-gray-500">
+              Archived
+            </span>
+          )}
           {priority && (
             <span className={clsx("rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide", priority.cls)}>
               {priority.label}

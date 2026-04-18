@@ -9,6 +9,8 @@ type KanbanColumnProps = {
   column: Column;
   cards: Card[];
   canDelete: boolean;
+  boardId: string;
+  currentUser: string;
   onRename: (columnId: string, title: string) => void;
   onDelete: (columnId: string) => void;
   onAddCard: (columnId: string, title: string, details: string, priority?: Priority | null, due_date?: string | null, labels?: string[]) => void;
@@ -20,6 +22,8 @@ export const KanbanColumn = ({
   column,
   cards,
   canDelete,
+  boardId,
+  currentUser,
   onRename,
   onDelete,
   onAddCard,
@@ -45,6 +49,20 @@ export const KanbanColumn = ({
               <span className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--gray-text)]">
                 {cards.length} cards
               </span>
+              {column.wip_limit != null && (
+                <span
+                  className={clsx(
+                    "rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
+                    cards.length >= column.wip_limit
+                      ? "bg-red-50 text-red-600"
+                      : cards.length >= column.wip_limit * 0.8
+                      ? "bg-yellow-50 text-yellow-700"
+                      : "bg-[var(--surface)] text-[var(--gray-text)]"
+                  )}
+                >
+                  WIP {cards.length}/{column.wip_limit}
+                </span>
+              )}
             </div>
             {canDelete && (
               <button
@@ -71,6 +89,8 @@ export const KanbanColumn = ({
             <KanbanCard
               key={card.id}
               card={card}
+              boardId={boardId}
+              currentUser={currentUser}
               onDelete={(cardId) => onDeleteCard(column.id, cardId)}
               onEdit={(updated) => onEditCard(column.id, updated)}
             />

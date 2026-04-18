@@ -17,10 +17,12 @@ import { createId, moveCard, type BoardData, type Card } from "@/lib/kanban";
 
 type KanbanBoardProps = {
   board: BoardData;
+  boardId: string;
+  currentUser: string;
   onBoardChange: (board: BoardData) => void;
 };
 
-export const KanbanBoard = ({ board, onBoardChange }: KanbanBoardProps) => {
+export const KanbanBoard = ({ board, boardId, currentUser, onBoardChange }: KanbanBoardProps) => {
   const [localBoard, setLocalBoard] = useState<BoardData>(() => board);
   const [activeCardId, setActiveCardId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -271,6 +273,8 @@ export const KanbanBoard = ({ board, onBoardChange }: KanbanBoardProps) => {
                   .filter(Boolean)
                   .filter(matchesSearch)}
                 canDelete={localBoard.columns.length > 1}
+                boardId={boardId}
+                currentUser={currentUser}
                 onRename={handleRenameColumn}
                 onDelete={handleDeleteColumn}
                 onAddCard={handleAddCard}

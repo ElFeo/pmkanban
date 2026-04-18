@@ -2,6 +2,7 @@
 
 import { useState, type FormEvent, useEffect } from "react";
 import type { Card, Priority } from "@/lib/kanban";
+import { CardCommentsPanel } from "@/components/CardCommentsPanel";
 
 const PRIORITIES: { value: Priority; label: string }[] = [
   { value: "low", label: "Low" },
@@ -12,17 +13,20 @@ const PRIORITIES: { value: Priority; label: string }[] = [
 
 type CardEditModalProps = {
   card: Card;
+  boardId: string;
+  currentUser: string;
   onSave: (updated: Card) => void;
   onClose: () => void;
 };
 
-export const CardEditModal = ({ card, onSave, onClose }: CardEditModalProps) => {
+export const CardEditModal = ({ card, boardId, currentUser, onSave, onClose }: CardEditModalProps) => {
   const [formState, setFormState] = useState({
     title: card.title,
     details: card.details ?? "",
     priority: (card.priority ?? "") as Priority | "",
     due_date: card.due_date ?? "",
     labels: (card.labels ?? []).join(", "),
+    archived: card.archived ?? false,
   });
 
   useEffect(() => {
@@ -47,6 +51,7 @@ export const CardEditModal = ({ card, onSave, onClose }: CardEditModalProps) => 
       priority: formState.priority || null,
       due_date: formState.due_date || null,
       labels,
+      archived: formState.archived,
     });
     onClose();
   };
@@ -135,6 +140,19 @@ export const CardEditModal = ({ card, onSave, onClose }: CardEditModalProps) => 
             />
           </div>
 
+          <div className="flex items-center gap-2">
+            <input
+              id="archived-check"
+              type="checkbox"
+              checked={formState.archived}
+              onChange={(e) => setFormState((p) => ({ ...p, archived: e.target.checked }))}
+              className="h-4 w-4 accent-[var(--secondary-purple)]"
+            />
+            <label htmlFor="archived-check" className="text-xs font-semibold uppercase tracking-wide text-[var(--gray-text)]">
+              Archived
+            </label>
+          </div>
+
           <div className="flex gap-3 pt-2">
             <button
               type="submit"
@@ -151,6 +169,8 @@ export const CardEditModal = ({ card, onSave, onClose }: CardEditModalProps) => 
             </button>
           </div>
         </form>
+
+        <CardCommentsPanel boardId={boardId} cardId={card.id} currentUser={currentUser} />
       </div>
     </div>
   );
