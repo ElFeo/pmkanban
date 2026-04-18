@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(.venv/Scripts/pip install *)",
+      "Bash(.venv/Scripts/pytest *)",
+      "Bash(../.venv/Scripts/pytest tests/test_api.py -v)",
+      "Bash(PYTHONPATH=/c/Users/andrz/worx/AIVibeUdemyMarch2026/pm/backend .venv/Scripts/pytest *)",
+      "Bash(npm run *)",
+      "Bash(PYTHONPATH=/c/Users/andrz/worx/AIVibeUdemyMarch2026/pm/backend .venv/Scripts/pytest.exe backend/tests/ --tb=short)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(python -m json.tool)",
+      "Bash(where jq *)"
+    ]
+  }
+}

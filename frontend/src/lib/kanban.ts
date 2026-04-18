@@ -7,12 +7,14 @@ export type Card = {
   priority?: Priority | null;
   due_date?: string | null;
   labels?: string[];
+  archived?: boolean;
 };
 
 export type Column = {
   id: string;
   title: string;
   cardIds: string[];
+  wip_limit?: number | null;
 };
 
 export type BoardData = {

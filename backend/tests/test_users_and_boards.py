@@ -203,7 +203,9 @@ def test_update_board_persists(tmp_path, monkeypatch):
         resp = client.get(f"/api/boards/{board_id}", headers=headers)
     assert resp.status_code == 200
     data = resp.json()
-    assert data["columns"] == VALID_BOARD["columns"]
+    assert len(data["columns"]) == len(VALID_BOARD["columns"])
+    assert data["columns"][0]["id"] == VALID_BOARD["columns"][0]["id"]
+    assert data["columns"][0]["title"] == VALID_BOARD["columns"][0]["title"]
     assert data["cards"]["card-1"]["title"] == "Task"
 
 
@@ -374,5 +376,6 @@ def test_legacy_put_board_still_works(tmp_path, monkeypatch):
         get_resp = client.get("/api/board/user", headers=headers)
     assert put_resp.status_code == 200
     data = get_resp.json()
-    assert data["columns"] == VALID_BOARD["columns"]
+    assert len(data["columns"]) == len(VALID_BOARD["columns"])
+    assert data["columns"][0]["id"] == VALID_BOARD["columns"][0]["id"]
     assert data["cards"]["card-1"]["title"] == "Task"

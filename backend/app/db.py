@@ -74,6 +74,7 @@ def init_db() -> None:
                 board_id TEXT NOT NULL,
                 title TEXT NOT NULL,
                 position INTEGER NOT NULL,
+                wip_limit INTEGER,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL,
                 FOREIGN KEY(board_id) REFERENCES boards(id)
@@ -92,6 +93,7 @@ def init_db() -> None:
                 priority TEXT,
                 due_date TEXT,
                 labels TEXT NOT NULL DEFAULT '[]',
+                archived INTEGER NOT NULL DEFAULT 0,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL,
                 FOREIGN KEY(board_id) REFERENCES boards(id),
@@ -118,11 +120,28 @@ def init_db() -> None:
         )
         conn.execute("CREATE INDEX IF NOT EXISTS idx_activity_board ON board_activity(board_id, created_at)")
 
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS card_comments (
+                id TEXT PRIMARY KEY,
+                card_id TEXT NOT NULL,
+                board_id TEXT NOT NULL,
+                author TEXT NOT NULL,
+                content TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY(board_id) REFERENCES boards(id)
+            )
+            """
+        )
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_comments_card ON card_comments(card_id, created_at)")
+
         # Migrate existing cards tables that lack new columns
         for col_def in [
             "ALTER TABLE cards ADD COLUMN priority TEXT",
             "ALTER TABLE cards ADD COLUMN due_date TEXT",
             "ALTER TABLE cards ADD COLUMN labels TEXT NOT NULL DEFAULT '[]'",
+            "ALTER TABLE cards ADD COLUMN archived INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE columns ADD COLUMN wip_limit INTEGER",
         ]:
             try:
                 conn.execute(col_def)
@@ -303,6 +322,7 @@ def delete_board(board_id: str, username: str) -> None:
     """Delete a board and all its columns/cards. Raises if not found or wrong owner."""
     with get_connection() as conn:
         _assert_board_owner(conn, board_id, username)
+        conn.execute("DELETE FROM card_comments WHERE board_id = ?", (board_id,))
         conn.execute("DELETE FROM cards WHERE board_id = ?", (board_id,))
         conn.execute("DELETE FROM columns WHERE board_id = ?", (board_id,))
         conn.execute("DELETE FROM board_activity WHERE board_id = ?", (board_id,))
@@ -345,8 +365,8 @@ def _insert_board_data(conn: sqlite3.Connection, board_id: str, board: BoardData
     now = _now()
     for col_index, column in enumerate(board.columns):
         conn.execute(
-            "INSERT INTO columns (id, board_id, title, position, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
-            (column.id, board_id, column.title, col_index, now, now),
+            "INSERT INTO columns (id, board_id, title, position, wip_limit, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (column.id, board_id, column.title, col_index, column.wip_limit, now, now),
         )
         for card_index, card_id in enumerate(column.cardIds):
             card = board.cards.get(card_id)
@@ -354,12 +374,13 @@ def _insert_board_data(conn: sqlite3.Connection, board_id: str, board: BoardData
                 raise ValueError(f"Column '{column.id}' references missing card '{card_id}'")
             conn.execute(
                 """
-                INSERT INTO cards (id, board_id, column_id, title, details, priority, due_date, labels, position, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO cards (id, board_id, column_id, title, details, priority, due_date, labels, archived, position, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     card.id, board_id, column.id, card.title, card.details,
                     card.priority, card.due_date, json.dumps(card.labels),
+                    1 if card.archived else 0,
                     card_index, now, now,
                 ),
             )
@@ -372,11 +393,11 @@ def _clear_board_data(conn: sqlite3.Connection, board_id: str) -> None:
 
 def _read_board_data(conn: sqlite3.Connection, board_id: str) -> BoardData:
     columns_rows = conn.execute(
-        "SELECT id, title FROM columns WHERE board_id = ? ORDER BY position",
+        "SELECT id, title, wip_limit FROM columns WHERE board_id = ? ORDER BY position",
         (board_id,),
     ).fetchall()
     card_rows = conn.execute(
-        "SELECT id, column_id, title, details, priority, due_date, labels FROM cards WHERE board_id = ? ORDER BY column_id, position",
+        "SELECT id, column_id, title, details, priority, due_date, labels, archived FROM cards WHERE board_id = ? ORDER BY column_id, position",
         (board_id,),
     ).fetchall()
 
@@ -391,12 +412,13 @@ def _read_board_data(conn: sqlite3.Connection, board_id: str) -> BoardData:
             priority=row["priority"],
             due_date=row["due_date"],
             labels=labels,
+            archived=bool(row["archived"]),
         )
         cards[card.id] = card
         card_ids_by_column[row["column_id"]].append(card.id)
 
     columns = [
-        Column(id=row["id"], title=row["title"], cardIds=card_ids_by_column[row["id"]])
+        Column(id=row["id"], title=row["title"], cardIds=card_ids_by_column[row["id"]], wip_limit=row["wip_limit"])
         for row in columns_rows
     ]
     return BoardData(columns=columns, cards=cards)
@@ -484,6 +506,54 @@ def get_board_activity(board_id: str, username: str, limit: int = 30) -> list[di
 # ---------------------------------------------------------------------------
 # Board statistics
 # ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# Card comments
+# ---------------------------------------------------------------------------
+
+def add_comment(board_id: str, card_id: str, username: str, content: str) -> dict:
+    """Add a comment to a card. Validates board ownership and card existence."""
+    comment_id = _new_id()
+    now = _now()
+    with get_connection() as conn:
+        _assert_board_owner(conn, board_id, username)
+        card_row = conn.execute(
+            "SELECT id FROM cards WHERE id = ? AND board_id = ?", (card_id, board_id)
+        ).fetchone()
+        if card_row is None:
+            raise ValueError(f"Card '{card_id}' not found in board '{board_id}'")
+        conn.execute(
+            "INSERT INTO card_comments (id, card_id, board_id, author, content, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+            (comment_id, card_id, board_id, username, content, now),
+        )
+    return {"id": comment_id, "card_id": card_id, "author": username, "content": content, "created_at": now}
+
+
+def get_comments(board_id: str, card_id: str, username: str) -> list[dict]:
+    """Return all comments for a card. Validates board ownership."""
+    with get_connection() as conn:
+        _assert_board_owner(conn, board_id, username)
+        rows = conn.execute(
+            "SELECT id, card_id, author, content, created_at FROM card_comments WHERE card_id = ? AND board_id = ? ORDER BY created_at ASC",
+            (card_id, board_id),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+
+def delete_comment(board_id: str, card_id: str, comment_id: str, username: str) -> None:
+    """Delete a comment. Only the author or board owner may delete."""
+    with get_connection() as conn:
+        _assert_board_owner(conn, board_id, username)
+        row = conn.execute(
+            "SELECT id, author FROM card_comments WHERE id = ? AND card_id = ? AND board_id = ?",
+            (comment_id, card_id, board_id),
+        ).fetchone()
+        if row is None:
+            raise ValueError("Comment not found")
+        if row["author"] != username:
+            raise PermissionError("Cannot delete another user's comment")
+        conn.execute("DELETE FROM card_comments WHERE id = ?", (comment_id,))
+
 
 def get_board_stats(board_id: str, username: str) -> dict:
     """Return aggregate stats for a board: card counts per column, priority breakdown, overdue count."""

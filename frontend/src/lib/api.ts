@@ -170,6 +170,43 @@ export const deleteBoard = async (boardId: string): Promise<void> => {
 };
 
 // ---------------------------------------------------------------------------
+// Card comments
+// ---------------------------------------------------------------------------
+
+export type Comment = {
+  id: string;
+  card_id: string;
+  author: string;
+  content: string;
+  created_at: string;
+};
+
+export const getComments = async (boardId: string, cardId: string): Promise<Comment[]> => {
+  const response = await fetch(`/api/boards/${boardId}/cards/${cardId}/comments`, {
+    headers: getAuthHeaders(),
+  });
+  const data = await readJson<{ card_id: string; comments: Comment[] }>(response);
+  return data.comments;
+};
+
+export const addComment = async (boardId: string, cardId: string, content: string): Promise<Comment> => {
+  const response = await fetch(`/api/boards/${boardId}/cards/${cardId}/comments`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+    body: JSON.stringify({ content }),
+  });
+  return readJson<Comment>(response);
+};
+
+export const deleteComment = async (boardId: string, cardId: string, commentId: string): Promise<void> => {
+  const response = await fetch(`/api/boards/${boardId}/cards/${cardId}/comments/${commentId}`, {
+    method: "DELETE",
+    headers: getAuthHeaders(),
+  });
+  if (!response.ok) throw new Error(`Delete failed (${response.status})`);
+};
+
+// ---------------------------------------------------------------------------
 // Board stats + activity
 // ---------------------------------------------------------------------------
 

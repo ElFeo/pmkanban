@@ -16,12 +16,14 @@ class Card(BaseModel):
         description="ISO date YYYY-MM-DD",
     )
     labels: list[str] = Field(default_factory=list, max_length=10)
+    archived: bool = False
 
 
 class Column(BaseModel):
     id: str = Field(max_length=100)
     title: str = Field(min_length=1, max_length=100)
     cardIds: list[str]
+    wip_limit: int | None = Field(default=None, ge=1, le=100)
 
 
 class BoardData(BaseModel):
@@ -134,3 +136,20 @@ class ActivityEntry(BaseModel):
 class ActivityLog(BaseModel):
     board_id: str
     entries: list[ActivityEntry]
+
+
+class CommentCreate(BaseModel):
+    content: str = Field(min_length=1, max_length=1000)
+
+
+class Comment(BaseModel):
+    id: str
+    card_id: str
+    author: str
+    content: str
+    created_at: str
+
+
+class CommentList(BaseModel):
+    card_id: str
+    comments: list[Comment]

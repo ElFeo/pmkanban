@@ -15,12 +15,15 @@ from pydantic import ValidationError
 
 from .auth import create_access_token, get_current_user, hash_password, verify_credentials, verify_password
 from .db import (
+    add_comment,
     create_board,
     create_user,
     delete_board,
+    delete_comment,
     get_board_activity,
     get_board_by_id,
     get_board_stats,
+    get_comments,
     get_or_create_first_board_id,
     get_user_by_username,
     get_user_profile,
@@ -43,6 +46,9 @@ from .schemas import (
     BoardStats,
     BoardSummary,
     ChangePasswordRequest,
+    Comment,
+    CommentCreate,
+    CommentList,
     LoginRequest,
     LoginResponse,
     RegisterRequest,
@@ -273,6 +279,13 @@ def update_board_route(
     board: BoardData,
     current_user: str = Depends(get_current_user),
 ) -> BoardData:
+    # Enforce WIP limits
+    for col in board.columns:
+        if col.wip_limit is not None and len(col.cardIds) > col.wip_limit:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Column '{col.title}' has {len(col.cardIds)} cards but WIP limit is {col.wip_limit}",
+            )
     try:
         result = save_board_by_id(board_id, current_user, board)
         card_count = sum(len(col.cardIds) for col in board.columns)
@@ -350,6 +363,56 @@ def get_activity(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
     except ValueError:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Board not found")
+
+
+# ---------------------------------------------------------------------------
+# Card comments routes
+# ---------------------------------------------------------------------------
+
+@app.post("/api/boards/{board_id}/cards/{card_id}/comments", response_model=Comment, status_code=201)
+def create_comment(
+    board_id: str,
+    card_id: str,
+    body: CommentCreate,
+    current_user: str = Depends(get_current_user),
+) -> Comment:
+    try:
+        comment = add_comment(board_id, card_id, current_user, body.content)
+        return Comment(**comment)
+    except PermissionError:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+
+
+@app.get("/api/boards/{board_id}/cards/{card_id}/comments", response_model=CommentList)
+def list_comments(
+    board_id: str,
+    card_id: str,
+    current_user: str = Depends(get_current_user),
+) -> CommentList:
+    try:
+        comments = get_comments(board_id, card_id, current_user)
+        return CommentList(card_id=card_id, comments=comments)
+    except PermissionError:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+
+
+@app.delete("/api/boards/{board_id}/cards/{card_id}/comments/{comment_id}", status_code=204)
+def remove_comment(
+    board_id: str,
+    card_id: str,
+    comment_id: str,
+    current_user: str = Depends(get_current_user),
+) -> None:
+    try:
+        delete_comment(board_id, card_id, comment_id, current_user)
+    except PermissionError:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
 
 
 # ---------------------------------------------------------------------------
