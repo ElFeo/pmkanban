@@ -170,6 +170,34 @@ export const deleteBoard = async (boardId: string): Promise<void> => {
 };
 
 // ---------------------------------------------------------------------------
+// User profile
+// ---------------------------------------------------------------------------
+
+export type UserProfile = {
+  username: string;
+  board_count: number;
+};
+
+export const getProfile = async (): Promise<UserProfile> => {
+  const response = await fetch("/api/me", { headers: getAuthHeaders() });
+  return readJson<UserProfile>(response);
+};
+
+export const changePassword = async (
+  current_password: string,
+  new_password: string
+): Promise<void> => {
+  const response = await fetch("/api/me/password", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+    body: JSON.stringify({ current_password, new_password }),
+  });
+  if (!response.ok) {
+    await readJson<never>(response); // throws with proper message
+  }
+};
+
+// ---------------------------------------------------------------------------
 // AI chat
 // ---------------------------------------------------------------------------
 

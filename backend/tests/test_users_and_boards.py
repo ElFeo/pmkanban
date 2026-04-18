@@ -202,7 +202,9 @@ def test_update_board_persists(tmp_path, monkeypatch):
         client.put(f"/api/boards/{board_id}", json=VALID_BOARD, headers=headers)
         resp = client.get(f"/api/boards/{board_id}", headers=headers)
     assert resp.status_code == 200
-    assert resp.json() == VALID_BOARD
+    data = resp.json()
+    assert data["columns"] == VALID_BOARD["columns"]
+    assert data["cards"]["card-1"]["title"] == "Task"
 
 
 def test_update_board_forbidden_for_other_user(tmp_path, monkeypatch):
@@ -230,24 +232,24 @@ def test_update_board_missing_card_reference(tmp_path, monkeypatch):
 
 def test_two_boards_data_isolated(tmp_path, monkeypatch):
     monkeypatch.setenv("PM_DB_PATH", str(tmp_path / "test.db"))
-    board_a_data = {
-        "columns": [{"id": "col-a", "title": "Alpha", "cardIds": ["card-a"]}],
-        "cards": {"card-a": {"id": "card-a", "title": "A Task", "details": ""}},
-    }
-    board_b_data = {
-        "columns": [{"id": "col-b", "title": "Beta", "cardIds": ["card-b"]}],
-        "cards": {"card-b": {"id": "card-b", "title": "B Task", "details": ""}},
-    }
     with TestClient(app) as client:
         headers = register_and_login(client, "alice")
         id_a = client.post("/api/boards", json={"title": "Board A"}, headers=headers).json()["id"]
         id_b = client.post("/api/boards", json={"title": "Board B"}, headers=headers).json()["id"]
-        client.put(f"/api/boards/{id_a}", json=board_a_data, headers=headers)
-        client.put(f"/api/boards/{id_b}", json=board_b_data, headers=headers)
+        client.put(f"/api/boards/{id_a}", json={
+            "columns": [{"id": "col-a", "title": "Alpha", "cardIds": ["card-a"]}],
+            "cards": {"card-a": {"id": "card-a", "title": "A Task", "details": ""}},
+        }, headers=headers)
+        client.put(f"/api/boards/{id_b}", json={
+            "columns": [{"id": "col-b", "title": "Beta", "cardIds": ["card-b"]}],
+            "cards": {"card-b": {"id": "card-b", "title": "B Task", "details": ""}},
+        }, headers=headers)
         resp_a = client.get(f"/api/boards/{id_a}", headers=headers).json()
         resp_b = client.get(f"/api/boards/{id_b}", headers=headers).json()
-    assert resp_a == board_a_data
-    assert resp_b == board_b_data
+    assert resp_a["cards"]["card-a"]["title"] == "A Task"
+    assert resp_b["cards"]["card-b"]["title"] == "B Task"
+    assert "card-b" not in resp_a["cards"]
+    assert "card-a" not in resp_b["cards"]
 
 
 # ---------------------------------------------------------------------------
@@ -371,4 +373,6 @@ def test_legacy_put_board_still_works(tmp_path, monkeypatch):
         put_resp = client.put("/api/board/user", json=VALID_BOARD, headers=headers)
         get_resp = client.get("/api/board/user", headers=headers)
     assert put_resp.status_code == 200
-    assert get_resp.json() == VALID_BOARD
+    data = get_resp.json()
+    assert data["columns"] == VALID_BOARD["columns"]
+    assert data["cards"]["card-1"]["title"] == "Task"

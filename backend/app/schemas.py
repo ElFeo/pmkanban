@@ -2,11 +2,20 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+Priority = Literal["low", "medium", "high", "urgent"]
+
 
 class Card(BaseModel):
     id: str = Field(max_length=100)
     title: str = Field(min_length=1, max_length=200)
     details: str = Field(max_length=2000)
+    priority: Priority | None = None
+    due_date: str | None = Field(
+        default=None,
+        pattern=r"^\d{4}-\d{2}-\d{2}$",
+        description="ISO date YYYY-MM-DD",
+    )
+    labels: list[str] = Field(default_factory=list, max_length=10)
 
 
 class Column(BaseModel):
@@ -80,3 +89,14 @@ class BoardCreateRequest(BaseModel):
 
 class BoardRenameRequest(BaseModel):
     title: str = Field(min_length=1, max_length=100)
+
+
+class UserProfile(BaseModel):
+    username: str
+    board_count: int
+    created_at: str
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str = Field(min_length=1, max_length=200)
+    new_password: str = Field(min_length=8, max_length=200)

@@ -2,6 +2,7 @@ import json
 import logging
 import os
 from collections import defaultdict
+from contextlib import asynccontextmanager
 from pathlib import Path
 from threading import Lock
 from time import time
@@ -9,21 +10,23 @@ from typing import Any
 
 import httpx
 from fastapi import Depends, FastAPI, HTTPException, Request, status
-from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, ValidationError
+from pydantic import ValidationError
 
-from .auth import create_access_token, get_current_user, hash_password, verify_credentials
+from .auth import create_access_token, get_current_user, hash_password, verify_credentials, verify_password
 from .db import (
     create_board,
     create_user,
     delete_board,
     get_board_by_id,
     get_or_create_first_board_id,
+    get_user_by_username,
+    get_user_profile,
     init_db,
     list_boards,
     rename_board,
     save_board_by_id,
+    update_user_password,
 )
 from .schemas import (
     AIChatRequest,
@@ -34,17 +37,28 @@ from .schemas import (
     BoardListResponse,
     BoardRenameRequest,
     BoardSummary,
+    ChangePasswordRequest,
     LoginRequest,
     LoginResponse,
     RegisterRequest,
     RegisterResponse,
+    UserProfile,
 )
 
 logger = logging.getLogger(__name__)
 
-app = FastAPI()
-
 BASE_DIR = Path(__file__).resolve().parents[1]
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    init_db()
+    if not os.getenv("OPENROUTER_API_KEY"):
+        logger.warning("OPENROUTER_API_KEY is not set — AI features will be unavailable")
+    yield
+
+
+app = FastAPI(lifespan=lifespan)
 FRONTEND_DIR = BASE_DIR.parent / "frontend" / "out"
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 OPENROUTER_MODEL = "openai/gpt-oss-120b"
@@ -342,6 +356,31 @@ def ai_chat(
 
 
 # ---------------------------------------------------------------------------
+# User profile routes
+# ---------------------------------------------------------------------------
+
+@app.get("/api/me", response_model=UserProfile)
+def get_profile(current_user: str = Depends(get_current_user)) -> UserProfile:
+    profile = get_user_profile(current_user)
+    if profile is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    return UserProfile(**profile)
+
+
+@app.patch("/api/me/password", status_code=204)
+def change_password(
+    request: ChangePasswordRequest,
+    current_user: str = Depends(get_current_user),
+) -> None:
+    user = get_user_by_username(current_user)
+    if user is None or not user.get("password_hash"):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    if not verify_password(request.current_password, user["password_hash"]):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Current password is incorrect")
+    update_user_password(current_user, hash_password(request.new_password))
+
+
+# ---------------------------------------------------------------------------
 # Legacy board routes (backward compatibility)
 # ---------------------------------------------------------------------------
 
@@ -380,17 +419,6 @@ def hello() -> dict[str, str]:
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
-
-
-# ---------------------------------------------------------------------------
-# Startup
-# ---------------------------------------------------------------------------
-
-@app.on_event("startup")
-def startup() -> None:
-    init_db()
-    if not os.getenv("OPENROUTER_API_KEY"):
-        logger.warning("OPENROUTER_API_KEY is not set — AI features will be unavailable")
 
 
 # ---------------------------------------------------------------------------

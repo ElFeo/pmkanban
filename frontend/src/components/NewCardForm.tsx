@@ -1,9 +1,29 @@
 import { useState, type FormEvent } from "react";
+import type { Priority } from "@/lib/kanban";
 
-const initialFormState = { title: "", details: "" };
+const PRIORITIES: { value: Priority; label: string }[] = [
+  { value: "low", label: "Low" },
+  { value: "medium", label: "Medium" },
+  { value: "high", label: "High" },
+  { value: "urgent", label: "Urgent" },
+];
+
+const initialFormState = {
+  title: "",
+  details: "",
+  priority: "" as Priority | "",
+  due_date: "",
+  labels: "",
+};
 
 type NewCardFormProps = {
-  onAdd: (title: string, details: string) => void;
+  onAdd: (
+    title: string,
+    details: string,
+    priority?: Priority | null,
+    due_date?: string | null,
+    labels?: string[]
+  ) => void;
 };
 
 export const NewCardForm = ({ onAdd }: NewCardFormProps) => {
@@ -12,10 +32,20 @@ export const NewCardForm = ({ onAdd }: NewCardFormProps) => {
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!formState.title.trim()) {
-      return;
-    }
-    onAdd(formState.title.trim(), formState.details.trim());
+    if (!formState.title.trim()) return;
+
+    const labels = formState.labels
+      .split(",")
+      .map((l) => l.trim())
+      .filter(Boolean);
+
+    onAdd(
+      formState.title.trim(),
+      formState.details.trim(),
+      formState.priority || null,
+      formState.due_date || null,
+      labels
+    );
     setFormState(initialFormState);
     setIsOpen(false);
   };
@@ -26,21 +56,41 @@ export const NewCardForm = ({ onAdd }: NewCardFormProps) => {
         <form onSubmit={handleSubmit} className="space-y-3">
           <input
             value={formState.title}
-            onChange={(event) =>
-              setFormState((prev) => ({ ...prev, title: event.target.value }))
-            }
+            onChange={(e) => setFormState((p) => ({ ...p, title: e.target.value }))}
             placeholder="Card title"
             className="w-full rounded-xl border border-[var(--stroke)] bg-white px-3 py-2 text-sm font-medium text-[var(--navy-dark)] outline-none transition focus:border-[var(--primary-blue)]"
             required
           />
           <textarea
             value={formState.details}
-            onChange={(event) =>
-              setFormState((prev) => ({ ...prev, details: event.target.value }))
-            }
+            onChange={(e) => setFormState((p) => ({ ...p, details: e.target.value }))}
             placeholder="Details"
-            rows={3}
+            rows={2}
             className="w-full resize-none rounded-xl border border-[var(--stroke)] bg-white px-3 py-2 text-sm text-[var(--gray-text)] outline-none transition focus:border-[var(--primary-blue)]"
+          />
+          <div className="flex gap-2">
+            <select
+              value={formState.priority}
+              onChange={(e) => setFormState((p) => ({ ...p, priority: e.target.value as Priority | "" }))}
+              className="flex-1 rounded-xl border border-[var(--stroke)] bg-white px-3 py-2 text-sm text-[var(--gray-text)] outline-none transition focus:border-[var(--primary-blue)]"
+            >
+              <option value="">No priority</option>
+              {PRIORITIES.map(({ value, label }) => (
+                <option key={value} value={value}>{label}</option>
+              ))}
+            </select>
+            <input
+              type="date"
+              value={formState.due_date}
+              onChange={(e) => setFormState((p) => ({ ...p, due_date: e.target.value }))}
+              className="flex-1 rounded-xl border border-[var(--stroke)] bg-white px-3 py-2 text-sm text-[var(--gray-text)] outline-none transition focus:border-[var(--primary-blue)]"
+            />
+          </div>
+          <input
+            value={formState.labels}
+            onChange={(e) => setFormState((p) => ({ ...p, labels: e.target.value }))}
+            placeholder="Labels (comma-separated)"
+            className="w-full rounded-xl border border-[var(--stroke)] bg-white px-3 py-2 text-sm text-[var(--gray-text)] outline-none transition focus:border-[var(--primary-blue)]"
           />
           <div className="flex items-center gap-2">
             <button
@@ -51,10 +101,7 @@ export const NewCardForm = ({ onAdd }: NewCardFormProps) => {
             </button>
             <button
               type="button"
-              onClick={() => {
-                setIsOpen(false);
-                setFormState(initialFormState);
-              }}
+              onClick={() => { setIsOpen(false); setFormState(initialFormState); }}
               className="rounded-full border border-[var(--stroke)] px-3 py-2 text-xs font-semibold uppercase tracking-wide text-[var(--gray-text)] transition hover:text-[var(--navy-dark)]"
             >
               Cancel

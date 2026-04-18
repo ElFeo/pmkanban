@@ -72,13 +72,20 @@ export const KanbanBoard = ({ board, onBoardChange }: KanbanBoardProps) => {
     });
   };
 
-  const handleAddCard = (columnId: string, title: string, details: string) => {
+  const handleAddCard = (
+    columnId: string,
+    title: string,
+    details: string,
+    priority?: import("@/lib/kanban").Priority | null,
+    due_date?: string | null,
+    labels?: string[]
+  ) => {
     const id = createId("card");
     updateBoard({
       ...localBoard,
       cards: {
         ...localBoard.cards,
-        [id]: { id, title, details: details || "No details yet." },
+        [id]: { id, title, details: details || "", priority: priority ?? null, due_date: due_date ?? null, labels: labels ?? [] },
       },
       columns: localBoard.columns.map((column) =>
         column.id === columnId

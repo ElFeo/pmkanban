@@ -1,3 +1,4 @@
+import json
 import os
 import sqlite3
 import uuid
@@ -88,6 +89,9 @@ def init_db() -> None:
                 title TEXT NOT NULL,
                 details TEXT NOT NULL,
                 position INTEGER NOT NULL,
+                priority TEXT,
+                due_date TEXT,
+                labels TEXT NOT NULL DEFAULT '[]',
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL,
                 FOREIGN KEY(board_id) REFERENCES boards(id),
@@ -99,6 +103,17 @@ def init_db() -> None:
         conn.execute("CREATE INDEX IF NOT EXISTS idx_columns_board ON columns(board_id, position)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_cards_board ON cards(board_id)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_cards_column ON cards(column_id, position)")
+
+        # Migrate existing cards tables that lack new columns
+        for col_def in [
+            "ALTER TABLE cards ADD COLUMN priority TEXT",
+            "ALTER TABLE cards ADD COLUMN due_date TEXT",
+            "ALTER TABLE cards ADD COLUMN labels TEXT NOT NULL DEFAULT '[]'",
+        ]:
+            try:
+                conn.execute(col_def)
+            except Exception:
+                pass
 
 
 # ---------------------------------------------------------------------------
@@ -132,6 +147,34 @@ def get_user_by_username(username: str) -> dict | None:
         if row is None:
             return None
         return dict(row)
+
+
+def get_user_profile(username: str) -> dict | None:
+    """Return user profile with board count, or None if user not found."""
+    with get_connection() as conn:
+        row = conn.execute(
+            "SELECT id, username, created_at FROM users WHERE username = ?", (username,)
+        ).fetchone()
+        if row is None:
+            return None
+        board_count = conn.execute(
+            "SELECT COUNT(*) AS cnt FROM boards WHERE user_id = ?", (row["id"],)
+        ).fetchone()["cnt"]
+        return {
+            "username": row["username"],
+            "board_count": board_count,
+            "created_at": row["created_at"],
+        }
+
+
+def update_user_password(username: str, new_hash: str) -> None:
+    """Update the password hash for a user."""
+    with get_connection() as conn:
+        result = conn.execute(
+            "UPDATE users SET password_hash = ? WHERE username = ?", (new_hash, username)
+        )
+        if result.rowcount == 0:
+            raise ValueError(f"User '{username}' not found")
 
 
 def upsert_demo_user(username: str, password_hash: str) -> str:
@@ -296,10 +339,14 @@ def _insert_board_data(conn: sqlite3.Connection, board_id: str, board: BoardData
                 raise ValueError(f"Column '{column.id}' references missing card '{card_id}'")
             conn.execute(
                 """
-                INSERT INTO cards (id, board_id, column_id, title, details, position, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO cards (id, board_id, column_id, title, details, priority, due_date, labels, position, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (card.id, board_id, column.id, card.title, card.details, card_index, now, now),
+                (
+                    card.id, board_id, column.id, card.title, card.details,
+                    card.priority, card.due_date, json.dumps(card.labels),
+                    card_index, now, now,
+                ),
             )
 
 
@@ -314,14 +361,22 @@ def _read_board_data(conn: sqlite3.Connection, board_id: str) -> BoardData:
         (board_id,),
     ).fetchall()
     card_rows = conn.execute(
-        "SELECT id, column_id, title, details FROM cards WHERE board_id = ? ORDER BY column_id, position",
+        "SELECT id, column_id, title, details, priority, due_date, labels FROM cards WHERE board_id = ? ORDER BY column_id, position",
         (board_id,),
     ).fetchall()
 
     cards: dict[str, Card] = {}
     card_ids_by_column: dict[str, list[str]] = {row["id"]: [] for row in columns_rows}
     for row in card_rows:
-        card = Card(id=row["id"], title=row["title"], details=row["details"])
+        labels = json.loads(row["labels"]) if row["labels"] else []
+        card = Card(
+            id=row["id"],
+            title=row["title"],
+            details=row["details"],
+            priority=row["priority"],
+            due_date=row["due_date"],
+            labels=labels,
+        )
         cards[card.id] = card
         card_ids_by_column[row["column_id"]].append(card.id)
 

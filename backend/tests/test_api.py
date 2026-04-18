@@ -143,7 +143,12 @@ def test_put_board_persists(tmp_path, monkeypatch):
 
     assert put_response.status_code == 200
     assert get_response.status_code == 200
-    assert get_response.json() == payload
+    data = get_response.json()
+    # columns unchanged; card core fields preserved (response may include new optional fields)
+    assert data["columns"] == payload["columns"]
+    card = data["cards"]["card-1"]
+    assert card["title"] == "Hello"
+    assert card["details"] == "World"
 
 
 # ---------------------------------------------------------------------------
