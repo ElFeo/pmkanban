@@ -139,6 +139,28 @@ class ActivityLog(BaseModel):
     entries: list[ActivityEntry]
 
 
+class ChecklistItem(BaseModel):
+    id: str
+    card_id: str
+    text: str
+    checked: bool
+    position: int
+
+
+class ChecklistItemCreate(BaseModel):
+    text: str = Field(min_length=1, max_length=500)
+
+
+class ChecklistItemUpdate(BaseModel):
+    text: str | None = Field(default=None, min_length=1, max_length=500)
+    checked: bool | None = None
+
+
+class ChecklistList(BaseModel):
+    card_id: str
+    items: list[ChecklistItem]
+
+
 class UserListResponse(BaseModel):
     usernames: list[str]
 

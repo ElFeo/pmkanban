@@ -136,6 +136,22 @@ def init_db() -> None:
         )
         conn.execute("CREATE INDEX IF NOT EXISTS idx_comments_card ON card_comments(card_id, created_at)")
 
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS card_checklists (
+                id TEXT PRIMARY KEY,
+                card_id TEXT NOT NULL,
+                board_id TEXT NOT NULL,
+                text TEXT NOT NULL,
+                checked INTEGER NOT NULL DEFAULT 0,
+                position INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY(board_id) REFERENCES boards(id)
+            )
+            """
+        )
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_checklists_card ON card_checklists(card_id, position)")
+
         # Migrate existing cards tables that lack new columns
         for col_def in [
             "ALTER TABLE cards ADD COLUMN priority TEXT",
@@ -325,6 +341,7 @@ def delete_board(board_id: str, username: str) -> None:
     with get_connection() as conn:
         _assert_board_owner(conn, board_id, username)
         conn.execute("DELETE FROM card_comments WHERE board_id = ?", (board_id,))
+        conn.execute("DELETE FROM card_checklists WHERE board_id = ?", (board_id,))
         conn.execute("DELETE FROM cards WHERE board_id = ?", (board_id,))
         conn.execute("DELETE FROM columns WHERE board_id = ?", (board_id,))
         conn.execute("DELETE FROM board_activity WHERE board_id = ?", (board_id,))
@@ -389,6 +406,8 @@ def _insert_board_data(conn: sqlite3.Connection, board_id: str, board: BoardData
 
 
 def _clear_board_data(conn: sqlite3.Connection, board_id: str) -> None:
+    conn.execute("DELETE FROM card_checklists WHERE board_id = ?", (board_id,))
+    conn.execute("DELETE FROM card_comments WHERE board_id = ?", (board_id,))
     conn.execute("DELETE FROM cards WHERE board_id = ?", (board_id,))
     conn.execute("DELETE FROM columns WHERE board_id = ?", (board_id,))
 
@@ -556,6 +575,65 @@ def delete_comment(board_id: str, card_id: str, comment_id: str, username: str) 
         if row["author"] != username:
             raise PermissionError("Cannot delete another user's comment")
         conn.execute("DELETE FROM card_comments WHERE id = ?", (comment_id,))
+
+
+def get_checklist(board_id: str, card_id: str, username: str) -> list[dict]:
+    with get_connection() as conn:
+        _assert_board_owner(conn, board_id, username)
+        rows = conn.execute(
+            "SELECT id, card_id, text, checked, position FROM card_checklists WHERE card_id = ? AND board_id = ? ORDER BY position",
+            (card_id, board_id),
+        ).fetchall()
+        return [{"id": r["id"], "card_id": r["card_id"], "text": r["text"], "checked": bool(r["checked"]), "position": r["position"]} for r in rows]
+
+
+def add_checklist_item(board_id: str, card_id: str, username: str, text: str) -> dict:
+    with get_connection() as conn:
+        _assert_board_owner(conn, board_id, username)
+        card_row = conn.execute("SELECT id FROM cards WHERE id = ? AND board_id = ?", (card_id, board_id)).fetchone()
+        if card_row is None:
+            raise ValueError(f"Card '{card_id}' not found in board '{board_id}'")
+        pos_row = conn.execute(
+            "SELECT COALESCE(MAX(position) + 1, 0) AS pos FROM card_checklists WHERE card_id = ? AND board_id = ?",
+            (card_id, board_id),
+        ).fetchone()
+        pos = pos_row["pos"] if pos_row else 0
+        item_id = _new_id()
+        now = _now()
+        conn.execute(
+            "INSERT INTO card_checklists (id, card_id, board_id, text, checked, position, created_at) VALUES (?, ?, ?, ?, 0, ?, ?)",
+            (item_id, card_id, board_id, text, pos, now),
+        )
+    return {"id": item_id, "card_id": card_id, "text": text, "checked": False, "position": pos}
+
+
+def update_checklist_item(board_id: str, card_id: str, item_id: str, username: str, text: str | None, checked: bool | None) -> dict:
+    with get_connection() as conn:
+        _assert_board_owner(conn, board_id, username)
+        row = conn.execute(
+            "SELECT id, text, checked, position FROM card_checklists WHERE id = ? AND card_id = ? AND board_id = ?",
+            (item_id, card_id, board_id),
+        ).fetchone()
+        if row is None:
+            raise ValueError("Checklist item not found")
+        new_text = text if text is not None else row["text"]
+        new_checked = checked if checked is not None else bool(row["checked"])
+        conn.execute(
+            "UPDATE card_checklists SET text = ?, checked = ? WHERE id = ?",
+            (new_text, 1 if new_checked else 0, item_id),
+        )
+    return {"id": item_id, "card_id": card_id, "text": new_text, "checked": new_checked, "position": row["position"]}
+
+
+def delete_checklist_item(board_id: str, card_id: str, item_id: str, username: str) -> None:
+    with get_connection() as conn:
+        _assert_board_owner(conn, board_id, username)
+        result = conn.execute(
+            "DELETE FROM card_checklists WHERE id = ? AND card_id = ? AND board_id = ?",
+            (item_id, card_id, board_id),
+        )
+        if result.rowcount == 0:
+            raise ValueError("Checklist item not found")
 
 
 def list_users() -> list[str]:

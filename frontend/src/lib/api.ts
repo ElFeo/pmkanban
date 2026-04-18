@@ -170,6 +170,53 @@ export const deleteBoard = async (boardId: string): Promise<void> => {
 };
 
 // ---------------------------------------------------------------------------
+// Card checklist
+// ---------------------------------------------------------------------------
+
+export type ChecklistItem = {
+  id: string;
+  card_id: string;
+  text: string;
+  checked: boolean;
+  position: number;
+};
+
+export const getChecklist = async (boardId: string, cardId: string): Promise<ChecklistItem[]> => {
+  const response = await fetch(`/api/boards/${boardId}/cards/${cardId}/checklist`, { headers: getAuthHeaders() });
+  const data = await readJson<{ card_id: string; items: ChecklistItem[] }>(response);
+  return data.items;
+};
+
+export const addChecklistItem = async (boardId: string, cardId: string, text: string): Promise<ChecklistItem> => {
+  const response = await fetch(`/api/boards/${boardId}/cards/${cardId}/checklist`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+    body: JSON.stringify({ text }),
+  });
+  return readJson<ChecklistItem>(response);
+};
+
+export const updateChecklistItem = async (
+  boardId: string, cardId: string, itemId: string,
+  patch: { text?: string; checked?: boolean }
+): Promise<ChecklistItem> => {
+  const response = await fetch(`/api/boards/${boardId}/cards/${cardId}/checklist/${itemId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+    body: JSON.stringify(patch),
+  });
+  return readJson<ChecklistItem>(response);
+};
+
+export const deleteChecklistItem = async (boardId: string, cardId: string, itemId: string): Promise<void> => {
+  const response = await fetch(`/api/boards/${boardId}/cards/${cardId}/checklist/${itemId}`, {
+    method: "DELETE",
+    headers: getAuthHeaders(),
+  });
+  if (!response.ok) throw new Error(`Delete failed (${response.status})`);
+};
+
+// ---------------------------------------------------------------------------
 // Users + My Tasks
 // ---------------------------------------------------------------------------
 

@@ -1,6 +1,7 @@
 import clsx from "clsx";
 import { useDroppable } from "@dnd-kit/core";
-import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import type { Card, Column, Priority } from "@/lib/kanban";
 import { KanbanCard } from "@/components/KanbanCard";
 import { NewCardForm } from "@/components/NewCardForm";
@@ -16,6 +17,8 @@ type KanbanColumnProps = {
   onAddCard: (columnId: string, title: string, details: string, priority?: Priority | null, due_date?: string | null, labels?: string[]) => void;
   onDeleteCard: (columnId: string, cardId: string) => void;
   onEditCard: (columnId: string, updated: Card) => void;
+  onDuplicateCard: (columnId: string, cardId: string) => void;
+  isDragging?: boolean;
 };
 
 export const KanbanColumn = ({
@@ -29,15 +32,21 @@ export const KanbanColumn = ({
   onAddCard,
   onDeleteCard,
   onEditCard,
+  onDuplicateCard,
+  isDragging,
 }: KanbanColumnProps) => {
-  const { setNodeRef, isOver } = useDroppable({ id: column.id });
+  const { setNodeRef: setDropRef, isOver } = useDroppable({ id: column.id });
+  const { attributes, listeners, setNodeRef: setSortRef, transform, transition } = useSortable({ id: column.id });
+  const style = { transform: CSS.Transform.toString(transform), transition };
 
   return (
     <section
-      ref={setNodeRef}
+      ref={(node) => { setSortRef(node); setDropRef(node); }}
+      style={style}
       className={clsx(
         "flex min-h-[520px] flex-col rounded-3xl border border-[var(--stroke)] bg-[var(--surface-strong)] p-4 shadow-[var(--shadow)] transition",
-        isOver && "ring-2 ring-[var(--accent-yellow)]"
+        isOver && "ring-2 ring-[var(--accent-yellow)]",
+        isDragging && "opacity-40"
       )}
       data-testid={`column-${column.id}`}
     >
@@ -45,7 +54,12 @@ export const KanbanColumn = ({
         <div className="w-full">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-3">
-              <div className="h-2 w-10 rounded-full bg-[var(--accent-yellow)]" />
+              <div
+                className="h-2 w-10 cursor-grab rounded-full bg-[var(--accent-yellow)] active:cursor-grabbing"
+                {...attributes}
+                {...listeners}
+                aria-label="Drag to reorder column"
+              />
               <span className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--gray-text)]">
                 {cards.length} cards
               </span>
@@ -93,6 +107,7 @@ export const KanbanColumn = ({
               currentUser={currentUser}
               onDelete={(cardId) => onDeleteCard(column.id, cardId)}
               onEdit={(updated) => onEditCard(column.id, updated)}
+              onDuplicate={(cardId) => onDuplicateCard(column.id, cardId)}
             />
           ))}
         </SortableContext>

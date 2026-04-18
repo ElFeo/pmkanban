@@ -15,14 +15,17 @@ from pydantic import ValidationError
 
 from .auth import create_access_token, get_current_user, hash_password, verify_credentials, verify_password
 from .db import (
+    add_checklist_item,
     add_comment,
     create_board,
     create_user,
     delete_board,
+    delete_checklist_item,
     delete_comment,
     get_board_activity,
     get_board_by_id,
     get_board_stats,
+    get_checklist,
     get_comments,
     get_my_tasks,
     get_or_create_first_board_id,
@@ -34,6 +37,7 @@ from .db import (
     log_activity,
     rename_board,
     save_board_by_id,
+    update_checklist_item,
     update_user_password,
 )
 from .schemas import (
@@ -48,6 +52,10 @@ from .schemas import (
     BoardStats,
     BoardSummary,
     ChangePasswordRequest,
+    ChecklistItem,
+    ChecklistItemCreate,
+    ChecklistItemUpdate,
+    ChecklistList,
     Comment,
     CommentCreate,
     CommentList,
@@ -413,6 +421,73 @@ def remove_comment(
 ) -> None:
     try:
         delete_comment(board_id, card_id, comment_id, current_user)
+    except PermissionError:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+
+
+# ---------------------------------------------------------------------------
+# Card checklist routes
+# ---------------------------------------------------------------------------
+
+@app.get("/api/boards/{board_id}/cards/{card_id}/checklist", response_model=ChecklistList)
+def list_checklist(
+    board_id: str,
+    card_id: str,
+    current_user: str = Depends(get_current_user),
+) -> ChecklistList:
+    try:
+        items = get_checklist(board_id, card_id, current_user)
+    except PermissionError:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+    return ChecklistList(card_id=card_id, items=items)
+
+
+@app.post("/api/boards/{board_id}/cards/{card_id}/checklist", response_model=ChecklistItem, status_code=201)
+def create_checklist_item(
+    board_id: str,
+    card_id: str,
+    body: ChecklistItemCreate,
+    current_user: str = Depends(get_current_user),
+) -> ChecklistItem:
+    try:
+        item = add_checklist_item(board_id, card_id, current_user, body.text)
+    except PermissionError:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+    return ChecklistItem(**item)
+
+
+@app.patch("/api/boards/{board_id}/cards/{card_id}/checklist/{item_id}", response_model=ChecklistItem)
+def patch_checklist_item(
+    board_id: str,
+    card_id: str,
+    item_id: str,
+    body: ChecklistItemUpdate,
+    current_user: str = Depends(get_current_user),
+) -> ChecklistItem:
+    try:
+        item = update_checklist_item(board_id, card_id, item_id, current_user, body.text, body.checked)
+    except PermissionError:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+    return ChecklistItem(**item)
+
+
+@app.delete("/api/boards/{board_id}/cards/{card_id}/checklist/{item_id}", status_code=204)
+def remove_checklist_item(
+    board_id: str,
+    card_id: str,
+    item_id: str,
+    current_user: str = Depends(get_current_user),
+) -> None:
+    try:
+        delete_checklist_item(board_id, card_id, item_id, current_user)
     except PermissionError:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
     except ValueError as exc:

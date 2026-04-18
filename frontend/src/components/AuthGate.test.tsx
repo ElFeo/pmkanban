@@ -139,6 +139,15 @@ describe("AuthGate", () => {
         });
       }
 
+      // Checklist endpoints
+      if (url.includes("/checklist")) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({ card_id: "", items: [] }),
+        });
+      }
+
       // Board data endpoints
       return Promise.resolve({
         ok: true,

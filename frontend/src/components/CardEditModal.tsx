@@ -2,6 +2,7 @@
 
 import { useState, type FormEvent, useEffect } from "react";
 import type { Card, Priority } from "@/lib/kanban";
+import { CardChecklist } from "@/components/CardChecklist";
 import { CardCommentsPanel } from "@/components/CardCommentsPanel";
 import { listUsers } from "@/lib/api";
 
@@ -194,6 +195,7 @@ export const CardEditModal = ({ card, boardId, currentUser, onSave, onClose }: C
           </div>
         </form>
 
+        <CardChecklist boardId={boardId} cardId={card.id} />
         <CardCommentsPanel boardId={boardId} cardId={card.id} currentUser={currentUser} />
       </div>
     </div>

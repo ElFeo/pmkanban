@@ -11,9 +11,10 @@ import {
   type DragEndEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
+import { SortableContext, arrayMove, horizontalListSortingStrategy } from "@dnd-kit/sortable";
 import { KanbanColumn } from "@/components/KanbanColumn";
 import { KanbanCardPreview } from "@/components/KanbanCardPreview";
-import { createId, moveCard, type BoardData, type Card } from "@/lib/kanban";
+import { createId, moveCard, type BoardData, type Card, type Column } from "@/lib/kanban";
 
 type KanbanBoardProps = {
   board: BoardData;
@@ -25,6 +26,7 @@ type KanbanBoardProps = {
 export const KanbanBoard = ({ board, boardId, currentUser, onBoardChange }: KanbanBoardProps) => {
   const [localBoard, setLocalBoard] = useState<BoardData>(() => board);
   const [activeCardId, setActiveCardId] = useState<string | null>(null);
+  const [activeColumnId, setActiveColumnId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const searchRef = useRef<HTMLInputElement>(null);
 
@@ -45,26 +47,45 @@ export const KanbanBoard = ({ board, boardId, currentUser, onBoardChange }: Kanb
     onBoardChange(nextBoard);
   };
 
+  const columnIds = useMemo(() => localBoard.columns.map((c) => c.id), [localBoard.columns]);
+
   const handleDragStart = (event: DragStartEvent) => {
-    setActiveCardId(event.active.id as string);
+    const id = event.active.id as string;
+    if (columnIds.includes(id)) {
+      setActiveColumnId(id);
+    } else {
+      setActiveCardId(id);
+    }
   };
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
     setActiveCardId(null);
+    setActiveColumnId(null);
 
-    if (!over || active.id === over.id) {
+    if (!over || active.id === over.id) return;
+
+    const activeId = active.id as string;
+    const overId = over.id as string;
+
+    // Column reorder
+    if (columnIds.includes(activeId) && columnIds.includes(overId)) {
+      const oldIndex = columnIds.indexOf(activeId);
+      const newIndex = columnIds.indexOf(overId);
+      updateBoard({
+        ...localBoard,
+        columns: arrayMove(localBoard.columns, oldIndex, newIndex),
+      });
       return;
     }
 
-    updateBoard({
-      ...localBoard,
-      columns: moveCard(
-        localBoard.columns,
-        active.id as string,
-        over.id as string
-      ),
-    });
+    // Card move
+    if (!columnIds.includes(activeId)) {
+      updateBoard({
+        ...localBoard,
+        columns: moveCard(localBoard.columns, activeId, overId),
+      });
+    }
   };
 
   const handleRenameColumn = (columnId: string, title: string) => {
@@ -142,6 +163,43 @@ export const KanbanBoard = ({ board, boardId, currentUser, onBoardChange }: Kanb
           : column
       ),
     });
+  };
+
+  const handleDuplicateCard = (columnId: string, cardId: string) => {
+    const src = localBoard.cards[cardId];
+    if (!src) return;
+    const newId = createId("card");
+    const clone: Card = { ...src, id: newId, title: `${src.title} (copy)` };
+    const col = localBoard.columns.find((c) => c.id === columnId);
+    if (!col) return;
+    const idx = col.cardIds.indexOf(cardId);
+    const newCardIds = [...col.cardIds];
+    newCardIds.splice(idx + 1, 0, newId);
+    updateBoard({
+      ...localBoard,
+      cards: { ...localBoard.cards, [newId]: clone },
+      columns: localBoard.columns.map((c) =>
+        c.id === columnId ? { ...c, cardIds: newCardIds } : c
+      ),
+    });
+  };
+
+  const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const parsed = JSON.parse(ev.target?.result as string);
+        if (parsed.columns && parsed.cards) {
+          updateBoard(parsed as import("@/lib/kanban").BoardData);
+        }
+      } catch {
+        // silently ignore invalid JSON
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = "";
   };
 
   const activeCard = activeCardId ? cardsById[activeCardId] : null;
@@ -266,14 +324,28 @@ export const KanbanBoard = ({ board, boardId, currentUser, onBoardChange }: Kanb
             >
               + Add column
             </button>
-            <button
-              type="button"
-              onClick={handleExport}
-              aria-label="Export board as JSON"
-              className="ml-auto rounded-full border border-[var(--stroke)] px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-[var(--gray-text)] transition hover:text-[var(--navy-dark)]"
-            >
-              Export JSON
-            </button>
+            <div className="ml-auto flex gap-2">
+              <label
+                className="cursor-pointer rounded-full border border-[var(--stroke)] px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-[var(--gray-text)] transition hover:text-[var(--navy-dark)]"
+                aria-label="Import board from JSON"
+              >
+                Import JSON
+                <input
+                  type="file"
+                  accept=".json"
+                  onChange={handleImport}
+                  className="hidden"
+                />
+              </label>
+              <button
+                type="button"
+                onClick={handleExport}
+                aria-label="Export board as JSON"
+                className="rounded-full border border-[var(--stroke)] px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-[var(--gray-text)] transition hover:text-[var(--navy-dark)]"
+              >
+                Export JSON
+              </button>
+            </div>
           </div>
 
           {/* Filter bar */}
@@ -360,30 +432,38 @@ export const KanbanBoard = ({ board, boardId, currentUser, onBoardChange }: Kanb
           onDragStart={handleDragStart}
           onDragEnd={handleDragEnd}
         >
-          <section className="grid gap-6" style={{ gridTemplateColumns: `repeat(${localBoard.columns.length}, minmax(240px, 1fr))` }}>
-            {localBoard.columns.map((column) => (
-              <KanbanColumn
-                key={column.id}
-                column={column}
-                cards={column.cardIds
-                  .map((cardId) => localBoard.cards[cardId])
-                  .filter(Boolean)
-                  .filter(matchesSearch)}
-                canDelete={localBoard.columns.length > 1}
-                boardId={boardId}
-                currentUser={currentUser}
-                onRename={handleRenameColumn}
-                onDelete={handleDeleteColumn}
-                onAddCard={handleAddCard}
-                onDeleteCard={handleDeleteCard}
-                onEditCard={handleEditCard}
-              />
-            ))}
-          </section>
+          <SortableContext items={columnIds} strategy={horizontalListSortingStrategy}>
+            <section className="grid gap-6" style={{ gridTemplateColumns: `repeat(${localBoard.columns.length}, minmax(240px, 1fr))` }}>
+              {localBoard.columns.map((column) => (
+                <KanbanColumn
+                  key={column.id}
+                  column={column}
+                  cards={column.cardIds
+                    .map((cardId) => localBoard.cards[cardId])
+                    .filter(Boolean)
+                    .filter(matchesSearch)}
+                  canDelete={localBoard.columns.length > 1}
+                  boardId={boardId}
+                  currentUser={currentUser}
+                  onRename={handleRenameColumn}
+                  onDelete={handleDeleteColumn}
+                  onAddCard={handleAddCard}
+                  onDeleteCard={handleDeleteCard}
+                  onEditCard={handleEditCard}
+                  onDuplicateCard={handleDuplicateCard}
+                  isDragging={activeColumnId === column.id}
+                />
+              ))}
+            </section>
+          </SortableContext>
           <DragOverlay>
             {activeCard ? (
               <div className="w-[260px]">
                 <KanbanCardPreview card={activeCard} />
+              </div>
+            ) : activeColumnId ? (
+              <div className="w-[280px] rounded-3xl border-2 border-dashed border-[var(--accent-yellow)] bg-white/70 p-4 text-sm font-semibold text-[var(--navy-dark)]">
+                {localBoard.columns.find((c) => c.id === activeColumnId)?.title}
               </div>
             ) : null}
           </DragOverlay>
