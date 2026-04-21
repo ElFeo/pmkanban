@@ -33,6 +33,11 @@ export const CardEditModal = ({ card, boardId, currentUser, onSave, onClose }: C
   });
   const [users, setUsers] = useState<string[]>([]);
 
+  type FormState = typeof formState;
+  const updateField = <K extends keyof FormState>(key: K, value: FormState[K]): void => {
+    setFormState((prev) => ({ ...prev, [key]: value }));
+  };
+
   useEffect(() => {
     listUsers().then(setUsers).catch(() => null);
   }, []);
@@ -89,7 +94,7 @@ export const CardEditModal = ({ card, boardId, currentUser, onSave, onClose }: C
             </label>
             <input
               value={formState.title}
-              onChange={(e) => setFormState((p) => ({ ...p, title: e.target.value }))}
+              onChange={(e) => updateField("title", e.target.value)}
               className="w-full rounded-xl border border-[var(--stroke)] bg-white px-3 py-2 text-sm font-medium text-[var(--navy-dark)] outline-none transition focus:border-[var(--primary-blue)]"
               required
               maxLength={200}
@@ -102,7 +107,7 @@ export const CardEditModal = ({ card, boardId, currentUser, onSave, onClose }: C
             </label>
             <textarea
               value={formState.details}
-              onChange={(e) => setFormState((p) => ({ ...p, details: e.target.value }))}
+              onChange={(e) => updateField("details", e.target.value)}
               rows={3}
               className="w-full resize-none rounded-xl border border-[var(--stroke)] bg-white px-3 py-2 text-sm text-[var(--gray-text)] outline-none transition focus:border-[var(--primary-blue)]"
             />
@@ -115,7 +120,7 @@ export const CardEditModal = ({ card, boardId, currentUser, onSave, onClose }: C
               </label>
               <select
                 value={formState.priority}
-                onChange={(e) => setFormState((p) => ({ ...p, priority: e.target.value as Priority | "" }))}
+                onChange={(e) => updateField("priority", e.target.value as Priority | "")}
                 className="w-full rounded-xl border border-[var(--stroke)] bg-white px-3 py-2 text-sm text-[var(--gray-text)] outline-none transition focus:border-[var(--primary-blue)]"
               >
                 <option value="">None</option>
@@ -131,7 +136,7 @@ export const CardEditModal = ({ card, boardId, currentUser, onSave, onClose }: C
               <input
                 type="date"
                 value={formState.due_date}
-                onChange={(e) => setFormState((p) => ({ ...p, due_date: e.target.value }))}
+                onChange={(e) => updateField("due_date", e.target.value)}
                 className="w-full rounded-xl border border-[var(--stroke)] bg-white px-3 py-2 text-sm text-[var(--gray-text)] outline-none transition focus:border-[var(--primary-blue)]"
               />
             </div>
@@ -143,7 +148,7 @@ export const CardEditModal = ({ card, boardId, currentUser, onSave, onClose }: C
             </label>
             <select
               value={formState.assignee}
-              onChange={(e) => setFormState((p) => ({ ...p, assignee: e.target.value }))}
+              onChange={(e) => updateField("assignee", e.target.value)}
               className="w-full rounded-xl border border-[var(--stroke)] bg-white px-3 py-2 text-sm text-[var(--gray-text)] outline-none transition focus:border-[var(--primary-blue)]"
             >
               <option value="">Unassigned</option>
@@ -159,7 +164,7 @@ export const CardEditModal = ({ card, boardId, currentUser, onSave, onClose }: C
             </label>
             <input
               value={formState.labels}
-              onChange={(e) => setFormState((p) => ({ ...p, labels: e.target.value }))}
+              onChange={(e) => updateField("labels", e.target.value)}
               placeholder="bug, frontend, v2"
               className="w-full rounded-xl border border-[var(--stroke)] bg-white px-3 py-2 text-sm text-[var(--gray-text)] outline-none transition focus:border-[var(--primary-blue)]"
             />
@@ -170,7 +175,7 @@ export const CardEditModal = ({ card, boardId, currentUser, onSave, onClose }: C
               id="archived-check"
               type="checkbox"
               checked={formState.archived}
-              onChange={(e) => setFormState((p) => ({ ...p, archived: e.target.checked }))}
+              onChange={(e) => updateField("archived", e.target.checked)}
               className="h-4 w-4 accent-[var(--secondary-purple)]"
             />
             <label htmlFor="archived-check" className="text-xs font-semibold uppercase tracking-wide text-[var(--gray-text)]">

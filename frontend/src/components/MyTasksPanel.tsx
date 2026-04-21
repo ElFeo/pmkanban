@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getMyTasks, type TaskCard } from "@/lib/api";
 import clsx from "clsx";
+import { getMyTasks, type TaskCard } from "@/lib/api";
 
 type Props = { currentUser: string };
 
@@ -13,7 +13,24 @@ const PRIORITY_CLS: Record<string, string> = {
   low: "bg-blue-50 text-blue-600",
 };
 
-const dueDelta = (due: string) => new Date(due).getTime() - Date.now();
+const SOON_MS = 3 * 24 * 60 * 60 * 1000;
+
+type DueStatus = "overdue" | "soon" | "later" | "none";
+
+function dueStatusFor(due: string | null | undefined): DueStatus {
+  if (!due) return "none";
+  const diff = new Date(due).getTime() - Date.now();
+  if (diff < 0) return "overdue";
+  if (diff < SOON_MS) return "soon";
+  return "later";
+}
+
+const DUE_CLASS: Record<DueStatus, string> = {
+  overdue: "text-red-500",
+  soon: "text-yellow-600",
+  later: "text-[var(--gray-text)]",
+  none: "text-[var(--gray-text)]",
+};
 
 export const MyTasksPanel = ({ currentUser }: Props) => {
   const [tasks, setTasks] = useState<TaskCard[]>([]);
@@ -28,8 +45,9 @@ export const MyTasksPanel = ({ currentUser }: Props) => {
   }, [currentUser]);
 
   const active = tasks.filter((t) => !t.archived);
-  const overdue = active.filter((t) => t.due_date && dueDelta(t.due_date) < 0);
-  const upcoming = active.filter((t) => t.due_date && dueDelta(t.due_date) >= 0 && dueDelta(t.due_date) < 3 * 24 * 60 * 60 * 1000);
+  const taskStatuses = active.map((task) => ({ task, status: dueStatusFor(task.due_date) }));
+  const overdueCount = taskStatuses.filter((t) => t.status === "overdue").length;
+  const soonCount = taskStatuses.filter((t) => t.status === "soon").length;
 
   return (
     <div className="rounded-[24px] border border-[var(--stroke)] bg-white p-6 shadow-[var(--shadow)]">
@@ -37,24 +55,22 @@ export const MyTasksPanel = ({ currentUser }: Props) => {
         My Tasks
       </p>
 
-      {loading && (
-        <p className="text-xs text-[var(--gray-text)]">Loading…</p>
-      )}
+      {loading && <p className="text-xs text-[var(--gray-text)]">Loading…</p>}
 
       {!loading && active.length === 0 && (
         <p className="text-xs text-[var(--gray-text)]">No tasks assigned to you.</p>
       )}
 
-      {!loading && (overdue.length > 0 || upcoming.length > 0) && (
+      {!loading && (overdueCount > 0 || soonCount > 0) && (
         <div className="mb-3 flex gap-3">
-          {overdue.length > 0 && (
+          {overdueCount > 0 && (
             <span className="rounded-full bg-red-50 px-2.5 py-0.5 text-[10px] font-semibold text-red-600">
-              {overdue.length} overdue
+              {overdueCount} overdue
             </span>
           )}
-          {upcoming.length > 0 && (
+          {soonCount > 0 && (
             <span className="rounded-full bg-yellow-50 px-2.5 py-0.5 text-[10px] font-semibold text-yellow-700">
-              {upcoming.length} due soon
+              {soonCount} due soon
             </span>
           )}
         </div>
@@ -62,33 +78,30 @@ export const MyTasksPanel = ({ currentUser }: Props) => {
 
       {!loading && active.length > 0 && (
         <div className="space-y-2">
-          {active.map((t) => {
-            const isOverdue = t.due_date && dueDelta(t.due_date) < 0;
-            const isSoon = t.due_date && dueDelta(t.due_date) >= 0 && dueDelta(t.due_date) < 3 * 24 * 60 * 60 * 1000;
-            return (
-              <div
-                key={t.card_id}
-                className="rounded-xl border border-[var(--stroke)] px-3 py-2"
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <p className="text-sm font-medium text-[var(--navy-dark)]">{t.title}</p>
-                  {t.priority && (
-                    <span className={clsx("shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide", PRIORITY_CLS[t.priority])}>
-                      {t.priority}
-                    </span>
-                  )}
-                </div>
-                <p className="mt-0.5 text-[11px] text-[var(--gray-text)]">
-                  {t.board_title} · {t.column_title}
-                </p>
-                {t.due_date && (
-                  <p className={clsx("mt-1 text-[11px] font-medium", isOverdue ? "text-red-500" : isSoon ? "text-yellow-600" : "text-[var(--gray-text)]")}>
-                    Due {t.due_date}{isOverdue ? " · Overdue" : ""}
-                  </p>
+          {taskStatuses.map(({ task, status }) => (
+            <div
+              key={task.card_id}
+              className="rounded-xl border border-[var(--stroke)] px-3 py-2"
+            >
+              <div className="flex items-start justify-between gap-2">
+                <p className="text-sm font-medium text-[var(--navy-dark)]">{task.title}</p>
+                {task.priority && (
+                  <span className={clsx("shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide", PRIORITY_CLS[task.priority])}>
+                    {task.priority}
+                  </span>
                 )}
               </div>
-            );
-          })}
+              <p className="mt-0.5 text-[11px] text-[var(--gray-text)]">
+                {task.board_title} · {task.column_title}
+              </p>
+              {task.due_date && (
+                <p className={clsx("mt-1 text-[11px] font-medium", DUE_CLASS[status])}>
+                  Due {task.due_date}
+                  {status === "overdue" && " · Overdue"}
+                </p>
+              )}
+            </div>
+          ))}
         </div>
       )}
     </div>

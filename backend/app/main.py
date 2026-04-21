@@ -86,9 +86,6 @@ FRONTEND_DIR = BASE_DIR.parent / "frontend" / "out"
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 OPENROUTER_MODEL = "openai/gpt-oss-120b"
 
-# ---------------------------------------------------------------------------
-# Security headers middleware
-# ---------------------------------------------------------------------------
 
 @app.middleware("http")
 async def add_security_headers(request: Request, call_next):
@@ -97,6 +94,18 @@ async def add_security_headers(request: Request, call_next):
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     return response
+
+
+# ---------------------------------------------------------------------------
+# Error mapping helpers
+# ---------------------------------------------------------------------------
+
+def _forbidden() -> HTTPException:
+    return HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
+
+
+def _not_found(detail: str = "Board not found") -> HTTPException:
+    return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=detail)
 
 
 # ---------------------------------------------------------------------------
@@ -114,15 +123,14 @@ def _check_ai_rate_limit(request: Request) -> None:
     now = time()
     with _rate_lock:
         window_start = now - RATE_LIMIT_WINDOW
-        _ai_request_log[client_ip] = [
-            t for t in _ai_request_log[client_ip] if t > window_start
-        ]
-        if len(_ai_request_log[client_ip]) >= RATE_LIMIT_MAX:
+        recent = [t for t in _ai_request_log[client_ip] if t > window_start]
+        if len(recent) >= RATE_LIMIT_MAX:
             raise HTTPException(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
                 detail="Rate limit exceeded. Please try again later.",
             )
-        _ai_request_log[client_ip].append(now)
+        recent.append(now)
+        _ai_request_log[client_ip] = recent
 
 
 # ---------------------------------------------------------------------------
@@ -207,14 +215,14 @@ def _apply_ai_result(board_id: str, username: str, result: AIChatResult) -> tupl
     if result.board is None:
         return None, False
 
-    missing_cards: list[str] = []
-    for column in result.board.columns:
-        for card_id in column.cardIds:
-            if card_id not in result.board.cards:
-                missing_cards.append(card_id)
-
-    if missing_cards:
-        raise ValueError("Board references missing cards: " + ", ".join(sorted(set(missing_cards))))
+    missing = sorted({
+        card_id
+        for column in result.board.columns
+        for card_id in column.cardIds
+        if card_id not in result.board.cards
+    })
+    if missing:
+        raise ValueError("Board references missing cards: " + ", ".join(missing))
 
     try:
         updated = save_board_by_id(board_id, username, result.board)
@@ -280,9 +288,9 @@ def get_board_route(
     try:
         return get_board_by_id(board_id, current_user)
     except PermissionError:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
+        raise _forbidden()
     except ValueError:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Board not found")
+        raise _not_found()
 
 
 @app.put("/api/boards/{board_id}", response_model=BoardData)
@@ -291,7 +299,6 @@ def update_board_route(
     board: BoardData,
     current_user: str = Depends(get_current_user),
 ) -> BoardData:
-    # Enforce WIP limits
     for col in board.columns:
         if col.wip_limit is not None and len(col.cardIds) > col.wip_limit:
             raise HTTPException(
@@ -304,11 +311,11 @@ def update_board_route(
         log_activity(board_id, "board_updated", f"{card_count} cards across {len(board.columns)} columns")
         return result
     except PermissionError:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
+        raise _forbidden()
     except ValueError as exc:
         msg = str(exc)
         if "not found" in msg.lower() and "card" not in msg.lower():
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Board not found")
+            raise _not_found()
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=msg)
 
 
@@ -322,13 +329,12 @@ def rename_board_route(
         rename_board(board_id, current_user, request.title)
         log_activity(board_id, "board_renamed", f"Renamed to '{request.title}'")
     except PermissionError:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
+        raise _forbidden()
     except ValueError:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Board not found")
-    boards = list_boards(current_user)
-    board = next((b for b in boards if b["id"] == board_id), None)
+        raise _not_found()
+    board = next((b for b in list_boards(current_user) if b["id"] == board_id), None)
     if board is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Board not found")
+        raise _not_found()
     return BoardSummary(**board)
 
 
@@ -340,9 +346,9 @@ def delete_board_route(
     try:
         delete_board(board_id, current_user)
     except PermissionError:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
+        raise _forbidden()
     except ValueError:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Board not found")
+        raise _not_found()
 
 
 # ---------------------------------------------------------------------------
@@ -355,12 +361,11 @@ def get_stats(
     current_user: str = Depends(get_current_user),
 ) -> BoardStats:
     try:
-        stats = get_board_stats(board_id, current_user)
-        return BoardStats(**stats)
+        return BoardStats(**get_board_stats(board_id, current_user))
     except PermissionError:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
+        raise _forbidden()
     except ValueError:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Board not found")
+        raise _not_found()
 
 
 @app.get("/api/boards/{board_id}/activity", response_model=ActivityLog)
@@ -370,11 +375,11 @@ def get_activity(
 ) -> ActivityLog:
     try:
         entries = get_board_activity(board_id, current_user)
-        return ActivityLog(board_id=board_id, entries=entries)
     except PermissionError:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
+        raise _forbidden()
     except ValueError:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Board not found")
+        raise _not_found()
+    return ActivityLog(board_id=board_id, entries=entries)
 
 
 # ---------------------------------------------------------------------------
@@ -389,12 +394,11 @@ def create_comment(
     current_user: str = Depends(get_current_user),
 ) -> Comment:
     try:
-        comment = add_comment(board_id, card_id, current_user, body.content)
-        return Comment(**comment)
+        return Comment(**add_comment(board_id, card_id, current_user, body.content))
     except PermissionError:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
+        raise _forbidden()
     except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+        raise _not_found(str(exc))
 
 
 @app.get("/api/boards/{board_id}/cards/{card_id}/comments", response_model=CommentList)
@@ -405,11 +409,11 @@ def list_comments(
 ) -> CommentList:
     try:
         comments = get_comments(board_id, card_id, current_user)
-        return CommentList(card_id=card_id, comments=comments)
     except PermissionError:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
+        raise _forbidden()
     except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+        raise _not_found(str(exc))
+    return CommentList(card_id=card_id, comments=comments)
 
 
 @app.delete("/api/boards/{board_id}/cards/{card_id}/comments/{comment_id}", status_code=204)
@@ -422,9 +426,9 @@ def remove_comment(
     try:
         delete_comment(board_id, card_id, comment_id, current_user)
     except PermissionError:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
+        raise _forbidden()
     except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+        raise _not_found(str(exc))
 
 
 # ---------------------------------------------------------------------------
@@ -440,9 +444,9 @@ def list_checklist(
     try:
         items = get_checklist(board_id, card_id, current_user)
     except PermissionError:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
+        raise _forbidden()
     except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+        raise _not_found(str(exc))
     return ChecklistList(card_id=card_id, items=items)
 
 
@@ -454,12 +458,11 @@ def create_checklist_item(
     current_user: str = Depends(get_current_user),
 ) -> ChecklistItem:
     try:
-        item = add_checklist_item(board_id, card_id, current_user, body.text)
+        return ChecklistItem(**add_checklist_item(board_id, card_id, current_user, body.text))
     except PermissionError:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
+        raise _forbidden()
     except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
-    return ChecklistItem(**item)
+        raise _not_found(str(exc))
 
 
 @app.patch("/api/boards/{board_id}/cards/{card_id}/checklist/{item_id}", response_model=ChecklistItem)
@@ -473,9 +476,9 @@ def patch_checklist_item(
     try:
         item = update_checklist_item(board_id, card_id, item_id, current_user, body.text, body.checked)
     except PermissionError:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
+        raise _forbidden()
     except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+        raise _not_found(str(exc))
     return ChecklistItem(**item)
 
 
@@ -489,9 +492,9 @@ def remove_checklist_item(
     try:
         delete_checklist_item(board_id, card_id, item_id, current_user)
     except PermissionError:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
+        raise _forbidden()
     except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+        raise _not_found(str(exc))
 
 
 # ---------------------------------------------------------------------------
@@ -506,15 +509,14 @@ def ai_chat(
 ) -> AIChatResponse:
     _check_ai_rate_limit(http_request)
 
-    # Resolve board_id: use requested board or fall back to first/default board
     if request.board_id:
         board_id = request.board_id
         try:
             board = get_board_by_id(board_id, current_user)
         except PermissionError:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
+            raise _forbidden()
         except ValueError:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Board not found")
+            raise _not_found()
     else:
         board_id = get_or_create_first_board_id(current_user)
         board = get_board_by_id(board_id, current_user)
@@ -546,7 +548,7 @@ def ai_chat(
 def get_profile(current_user: str = Depends(get_current_user)) -> UserProfile:
     profile = get_user_profile(current_user)
     if profile is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        raise _not_found("User not found")
     return UserProfile(**profile)
 
 
@@ -557,7 +559,7 @@ def change_password(
 ) -> None:
     user = get_user_by_username(current_user)
     if user is None or not user.get("password_hash"):
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        raise _not_found("User not found")
     if not verify_password(request.current_password, user["password_hash"]):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Current password is incorrect")
     update_user_password(current_user, hash_password(request.new_password))
@@ -584,7 +586,7 @@ def read_board_legacy(
     current_user: str = Depends(get_current_user),
 ) -> BoardData:
     if username != current_user:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
+        raise _forbidden()
     board_id = get_or_create_first_board_id(current_user)
     return get_board_by_id(board_id, current_user)
 
@@ -596,7 +598,7 @@ def update_board_legacy(
     current_user: str = Depends(get_current_user),
 ) -> BoardData:
     if username != current_user:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
+        raise _forbidden()
     board_id = get_or_create_first_board_id(current_user)
     return save_board_by_id(board_id, current_user, board)
 

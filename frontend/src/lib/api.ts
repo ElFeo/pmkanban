@@ -43,15 +43,16 @@ export const setAuthToken = (token: string | null): void => {
   _authToken = token;
 };
 
-const getAuthHeaders = (): Record<string, string> => {
-  if (_authToken) {
-    return { Authorization: `Bearer ${_authToken}` };
-  }
-  return {};
-};
+const getAuthHeaders = (): Record<string, string> =>
+  _authToken ? { Authorization: `Bearer ${_authToken}` } : {};
+
+const jsonHeaders = (): Record<string, string> => ({
+  "Content-Type": "application/json",
+  ...getAuthHeaders(),
+});
 
 // ---------------------------------------------------------------------------
-// Response parsing helper
+// Response parsing helpers
 // ---------------------------------------------------------------------------
 
 type ApiError = {
@@ -59,24 +60,25 @@ type ApiError = {
   detail?: string | { msg: string }[];
 };
 
-const readJson = async <T>(response: Response): Promise<T> => {
-  if (!response.ok) {
-    let message = `Request failed (${response.status})`;
-    try {
-      const errorBody = (await response.json()) as ApiError;
-      if (errorBody?.message) {
-        message = errorBody.message;
-      } else if (typeof errorBody?.detail === "string") {
-        message = errorBody.detail;
-      } else if (Array.isArray(errorBody?.detail)) {
-        message = errorBody.detail.map((e) => e.msg).join(", ");
-      }
-    } catch {
-      // ignore parse errors on error responses
-    }
-    throw new Error(message);
+const errorMessage = async (response: Response): Promise<string> => {
+  try {
+    const body = (await response.json()) as ApiError;
+    if (body?.message) return body.message;
+    if (typeof body?.detail === "string") return body.detail;
+    if (Array.isArray(body?.detail)) return body.detail.map((e) => e.msg).join(", ");
+  } catch {
+    // ignore parse errors on error responses
   }
+  return `Request failed (${response.status})`;
+};
+
+const readJson = async <T>(response: Response): Promise<T> => {
+  if (!response.ok) throw new Error(await errorMessage(response));
   return (await response.json()) as T;
+};
+
+const ensureOk = async (response: Response): Promise<void> => {
+  if (!response.ok) throw new Error(await errorMessage(response));
 };
 
 // ---------------------------------------------------------------------------
@@ -112,9 +114,7 @@ export const register = async (
 // ---------------------------------------------------------------------------
 
 export const listBoards = async (): Promise<BoardSummary[]> => {
-  const response = await fetch("/api/boards", {
-    headers: getAuthHeaders(),
-  });
+  const response = await fetch("/api/boards", { headers: getAuthHeaders() });
   const data = await readJson<BoardListResponse>(response);
   return data.boards;
 };
@@ -122,16 +122,14 @@ export const listBoards = async (): Promise<BoardSummary[]> => {
 export const createBoard = async (title: string): Promise<BoardSummary> => {
   const response = await fetch("/api/boards", {
     method: "POST",
-    headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+    headers: jsonHeaders(),
     body: JSON.stringify({ title }),
   });
   return readJson<BoardSummary>(response);
 };
 
 export const fetchBoard = async (boardId: string): Promise<BoardData> => {
-  const response = await fetch(`/api/boards/${boardId}`, {
-    headers: getAuthHeaders(),
-  });
+  const response = await fetch(`/api/boards/${boardId}`, { headers: getAuthHeaders() });
   return readJson<BoardData>(response);
 };
 
@@ -141,7 +139,7 @@ export const saveBoard = async (
 ): Promise<BoardData> => {
   const response = await fetch(`/api/boards/${boardId}`, {
     method: "PUT",
-    headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+    headers: jsonHeaders(),
     body: JSON.stringify(board),
   });
   return readJson<BoardData>(response);
@@ -153,7 +151,7 @@ export const renameBoard = async (
 ): Promise<BoardSummary> => {
   const response = await fetch(`/api/boards/${boardId}`, {
     method: "PATCH",
-    headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+    headers: jsonHeaders(),
     body: JSON.stringify({ title }),
   });
   return readJson<BoardSummary>(response);
@@ -164,9 +162,7 @@ export const deleteBoard = async (boardId: string): Promise<void> => {
     method: "DELETE",
     headers: getAuthHeaders(),
   });
-  if (!response.ok) {
-    throw new Error(`Delete failed (${response.status})`);
-  }
+  await ensureOk(response);
 };
 
 // ---------------------------------------------------------------------------
@@ -182,38 +178,50 @@ export type ChecklistItem = {
 };
 
 export const getChecklist = async (boardId: string, cardId: string): Promise<ChecklistItem[]> => {
-  const response = await fetch(`/api/boards/${boardId}/cards/${cardId}/checklist`, { headers: getAuthHeaders() });
+  const response = await fetch(`/api/boards/${boardId}/cards/${cardId}/checklist`, {
+    headers: getAuthHeaders(),
+  });
   const data = await readJson<{ card_id: string; items: ChecklistItem[] }>(response);
   return data.items;
 };
 
-export const addChecklistItem = async (boardId: string, cardId: string, text: string): Promise<ChecklistItem> => {
+export const addChecklistItem = async (
+  boardId: string,
+  cardId: string,
+  text: string
+): Promise<ChecklistItem> => {
   const response = await fetch(`/api/boards/${boardId}/cards/${cardId}/checklist`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+    headers: jsonHeaders(),
     body: JSON.stringify({ text }),
   });
   return readJson<ChecklistItem>(response);
 };
 
 export const updateChecklistItem = async (
-  boardId: string, cardId: string, itemId: string,
+  boardId: string,
+  cardId: string,
+  itemId: string,
   patch: { text?: string; checked?: boolean }
 ): Promise<ChecklistItem> => {
   const response = await fetch(`/api/boards/${boardId}/cards/${cardId}/checklist/${itemId}`, {
     method: "PATCH",
-    headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+    headers: jsonHeaders(),
     body: JSON.stringify(patch),
   });
   return readJson<ChecklistItem>(response);
 };
 
-export const deleteChecklistItem = async (boardId: string, cardId: string, itemId: string): Promise<void> => {
+export const deleteChecklistItem = async (
+  boardId: string,
+  cardId: string,
+  itemId: string
+): Promise<void> => {
   const response = await fetch(`/api/boards/${boardId}/cards/${cardId}/checklist/${itemId}`, {
     method: "DELETE",
     headers: getAuthHeaders(),
   });
-  if (!response.ok) throw new Error(`Delete failed (${response.status})`);
+  await ensureOk(response);
 };
 
 // ---------------------------------------------------------------------------
@@ -266,21 +274,29 @@ export const getComments = async (boardId: string, cardId: string): Promise<Comm
   return data.comments;
 };
 
-export const addComment = async (boardId: string, cardId: string, content: string): Promise<Comment> => {
+export const addComment = async (
+  boardId: string,
+  cardId: string,
+  content: string
+): Promise<Comment> => {
   const response = await fetch(`/api/boards/${boardId}/cards/${cardId}/comments`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+    headers: jsonHeaders(),
     body: JSON.stringify({ content }),
   });
   return readJson<Comment>(response);
 };
 
-export const deleteComment = async (boardId: string, cardId: string, commentId: string): Promise<void> => {
+export const deleteComment = async (
+  boardId: string,
+  cardId: string,
+  commentId: string
+): Promise<void> => {
   const response = await fetch(`/api/boards/${boardId}/cards/${cardId}/comments/${commentId}`, {
     method: "DELETE",
     headers: getAuthHeaders(),
   });
-  if (!response.ok) throw new Error(`Delete failed (${response.status})`);
+  await ensureOk(response);
 };
 
 // ---------------------------------------------------------------------------

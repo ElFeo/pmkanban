@@ -3,7 +3,7 @@ import os
 import sqlite3
 import uuid
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 from .schemas import BoardData, Card, Column
@@ -49,12 +49,6 @@ def init_db() -> None:
             )
             """
         )
-        # Migrate existing DBs that lack password_hash column
-        try:
-            conn.execute("ALTER TABLE users ADD COLUMN password_hash TEXT")
-        except Exception:
-            pass
-
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS boards (
@@ -152,8 +146,9 @@ def init_db() -> None:
         )
         conn.execute("CREATE INDEX IF NOT EXISTS idx_checklists_card ON card_checklists(card_id, position)")
 
-        # Migrate existing cards tables that lack new columns
-        for col_def in [
+        # Best-effort migrations for pre-existing DBs that lack newer columns.
+        for migration in [
+            "ALTER TABLE users ADD COLUMN password_hash TEXT",
             "ALTER TABLE cards ADD COLUMN priority TEXT",
             "ALTER TABLE cards ADD COLUMN due_date TEXT",
             "ALTER TABLE cards ADD COLUMN labels TEXT NOT NULL DEFAULT '[]'",
@@ -162,7 +157,7 @@ def init_db() -> None:
             "ALTER TABLE columns ADD COLUMN wip_limit INTEGER",
         ]:
             try:
-                conn.execute(col_def)
+                conn.execute(migration)
             except Exception:
                 pass
 
@@ -266,7 +261,7 @@ def _ensure_user(conn: sqlite3.Connection, username: str) -> str:
     return user_id
 
 
-def _get_or_create_default_board(conn: sqlite3.Connection, user_id: str, username: str) -> str:
+def _get_or_create_default_board(conn: sqlite3.Connection, user_id: str) -> str:
     """Get or create the user's default board; return board_id."""
     row = conn.execute(
         "SELECT id FROM boards WHERE user_id = ? ORDER BY created_at ASC LIMIT 1",
@@ -467,38 +462,11 @@ def save_board_by_id(board_id: str, username: str, board: BoardData) -> BoardDat
     return get_board_by_id(board_id, username)
 
 
-def get_first_board_id(username: str) -> str | None:
-    """Return the first board_id for a user, or None if no boards."""
-    with get_connection() as conn:
-        user_id = _ensure_user(conn, username)
-        row = conn.execute(
-            "SELECT id FROM boards WHERE user_id = ? ORDER BY created_at ASC LIMIT 1",
-            (user_id,),
-        ).fetchone()
-        if row:
-            return row["id"]
-        return None
-
-
 def get_or_create_first_board_id(username: str) -> str:
     """Return or create the first board for a user, seeding it if needed."""
     with get_connection() as conn:
         user_id = _ensure_user(conn, username)
-        return _get_or_create_default_board(conn, user_id, username)
-
-
-# ---------------------------------------------------------------------------
-# Legacy helpers (kept for backward compatibility with old /api/board/{username})
-# ---------------------------------------------------------------------------
-
-def get_board(username: str) -> BoardData:
-    board_id = get_or_create_first_board_id(username)
-    return get_board_by_id(board_id, username)
-
-
-def save_board(username: str, board: BoardData) -> BoardData:
-    board_id = get_or_create_first_board_id(username)
-    return save_board_by_id(board_id, username, board)
+        return _get_or_create_default_board(conn, user_id)
 
 
 # ---------------------------------------------------------------------------
@@ -524,10 +492,6 @@ def get_board_activity(board_id: str, username: str, limit: int = 30) -> list[di
         ).fetchall()
         return [dict(row) for row in rows]
 
-
-# ---------------------------------------------------------------------------
-# Board statistics
-# ---------------------------------------------------------------------------
 
 # ---------------------------------------------------------------------------
 # Card comments
@@ -584,7 +548,7 @@ def get_checklist(board_id: str, card_id: str, username: str) -> list[dict]:
             "SELECT id, card_id, text, checked, position FROM card_checklists WHERE card_id = ? AND board_id = ? ORDER BY position",
             (card_id, board_id),
         ).fetchall()
-        return [{"id": r["id"], "card_id": r["card_id"], "text": r["text"], "checked": bool(r["checked"]), "position": r["position"]} for r in rows]
+    return [{**dict(r), "checked": bool(r["checked"])} for r in rows]
 
 
 def add_checklist_item(board_id: str, card_id: str, username: str, text: str) -> dict:
@@ -671,28 +635,18 @@ def get_my_tasks(username: str) -> list[dict]:
             """,
             (username, username),
         ).fetchall()
-        result = []
-        for row in rows:
-            labels = json.loads(row["labels"]) if row["labels"] else []
-            result.append({
-                "card_id": row["card_id"],
-                "board_id": row["board_id"],
-                "board_title": row["board_title"],
-                "column_title": row["column_title"],
-                "title": row["title"],
-                "details": row["details"],
-                "priority": row["priority"],
-                "due_date": row["due_date"],
-                "labels": labels,
-                "archived": bool(row["archived"]),
-                "assignee": row["assignee"],
-            })
-        return result
+
+    result = []
+    for row in rows:
+        task = dict(row)
+        task["labels"] = json.loads(task["labels"]) if task["labels"] else []
+        task["archived"] = bool(task["archived"])
+        result.append(task)
+    return result
 
 
 def get_board_stats(board_id: str, username: str) -> dict:
     """Return aggregate stats for a board: card counts per column, priority breakdown, overdue count."""
-    from datetime import date
     today = date.today().isoformat()
 
     with get_connection() as conn:
@@ -720,18 +674,15 @@ def get_board_stats(board_id: str, username: str) -> dict:
             (board_id, today),
         ).fetchone()
 
-        columns = [{"column_id": r["column_id"], "column_title": r["column_title"], "card_count": r["card_count"]} for r in col_rows]
-        total = sum(c["card_count"] for c in columns)
+    columns = [dict(r) for r in col_rows]
+    priority_map: dict[str, int] = {"low": 0, "medium": 0, "high": 0, "urgent": 0, "none": 0}
+    for row in priority_rows:
+        priority_map[row["priority"] or "none"] = row["cnt"]
 
-        priority_map: dict[str, int] = {"low": 0, "medium": 0, "high": 0, "urgent": 0, "none": 0}
-        for row in priority_rows:
-            key = row["priority"] if row["priority"] else "none"
-            priority_map[key] = row["cnt"]
-
-        return {
-            "board_id": board_id,
-            "total_cards": total,
-            "overdue_count": overdue_row["cnt"] if overdue_row else 0,
-            "columns": columns,
-            "priority_breakdown": priority_map,
-        }
+    return {
+        "board_id": board_id,
+        "total_cards": sum(c["card_count"] for c in columns),
+        "overdue_count": overdue_row["cnt"] if overdue_row else 0,
+        "columns": columns,
+        "priority_breakdown": priority_map,
+    }

@@ -30,6 +30,11 @@ export const NewCardForm = ({ onAdd }: NewCardFormProps) => {
   const [isOpen, setIsOpen] = useState(false);
   const [formState, setFormState] = useState(initialFormState);
 
+  type FormState = typeof initialFormState;
+  const updateField = <K extends keyof FormState>(key: K, value: FormState[K]): void => {
+    setFormState((prev) => ({ ...prev, [key]: value }));
+  };
+
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!formState.title.trim()) return;
@@ -56,14 +61,14 @@ export const NewCardForm = ({ onAdd }: NewCardFormProps) => {
         <form onSubmit={handleSubmit} className="space-y-3">
           <input
             value={formState.title}
-            onChange={(e) => setFormState((p) => ({ ...p, title: e.target.value }))}
+            onChange={(e) => updateField("title", e.target.value)}
             placeholder="Card title"
             className="w-full rounded-xl border border-[var(--stroke)] bg-white px-3 py-2 text-sm font-medium text-[var(--navy-dark)] outline-none transition focus:border-[var(--primary-blue)]"
             required
           />
           <textarea
             value={formState.details}
-            onChange={(e) => setFormState((p) => ({ ...p, details: e.target.value }))}
+            onChange={(e) => updateField("details", e.target.value)}
             placeholder="Details"
             rows={2}
             className="w-full resize-none rounded-xl border border-[var(--stroke)] bg-white px-3 py-2 text-sm text-[var(--gray-text)] outline-none transition focus:border-[var(--primary-blue)]"
@@ -71,7 +76,7 @@ export const NewCardForm = ({ onAdd }: NewCardFormProps) => {
           <div className="flex gap-2">
             <select
               value={formState.priority}
-              onChange={(e) => setFormState((p) => ({ ...p, priority: e.target.value as Priority | "" }))}
+              onChange={(e) => updateField("priority", e.target.value as Priority | "")}
               className="flex-1 rounded-xl border border-[var(--stroke)] bg-white px-3 py-2 text-sm text-[var(--gray-text)] outline-none transition focus:border-[var(--primary-blue)]"
             >
               <option value="">No priority</option>
@@ -82,13 +87,13 @@ export const NewCardForm = ({ onAdd }: NewCardFormProps) => {
             <input
               type="date"
               value={formState.due_date}
-              onChange={(e) => setFormState((p) => ({ ...p, due_date: e.target.value }))}
+              onChange={(e) => updateField("due_date", e.target.value)}
               className="flex-1 rounded-xl border border-[var(--stroke)] bg-white px-3 py-2 text-sm text-[var(--gray-text)] outline-none transition focus:border-[var(--primary-blue)]"
             />
           </div>
           <input
             value={formState.labels}
-            onChange={(e) => setFormState((p) => ({ ...p, labels: e.target.value }))}
+            onChange={(e) => updateField("labels", e.target.value)}
             placeholder="Labels (comma-separated)"
             className="w-full rounded-xl border border-[var(--stroke)] bg-white px-3 py-2 text-sm text-[var(--gray-text)] outline-none transition focus:border-[var(--primary-blue)]"
           />

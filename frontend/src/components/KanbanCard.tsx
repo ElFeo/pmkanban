@@ -1,9 +1,9 @@
+import { useState } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import clsx from "clsx";
-import type { Card, Priority } from "@/lib/kanban";
-import { useState } from "react";
 import { CardEditModal } from "@/components/CardEditModal";
+import type { Card, Priority } from "@/lib/kanban";
 
 type KanbanCardProps = {
   card: Card;
@@ -21,11 +21,21 @@ const PRIORITY_STYLES: Record<Priority, { label: string; cls: string }> = {
   urgent: { label: "Urgent", cls: "bg-red-50 text-red-600" },
 };
 
-const dueDateStatus = (due: string): "overdue" | "soon" | "ok" => {
+const SOON_MS = 3 * 24 * 60 * 60 * 1000;
+
+type DueStatus = "overdue" | "soon" | "ok";
+
+function dueDateStatus(due: string): DueStatus {
   const diff = new Date(due).getTime() - Date.now();
   if (diff < 0) return "overdue";
-  if (diff < 3 * 24 * 60 * 60 * 1000) return "soon";
+  if (diff < SOON_MS) return "soon";
   return "ok";
+}
+
+const DUE_STATUS_CLASS: Record<DueStatus, string> = {
+  overdue: "text-red-500",
+  soon: "text-yellow-600",
+  ok: "text-[var(--gray-text)]",
 };
 
 export const KanbanCard = ({ card, boardId, currentUser, onDelete, onEdit, onDuplicate }: KanbanCardProps) => {
@@ -36,6 +46,7 @@ export const KanbanCard = ({ card, boardId, currentUser, onDelete, onEdit, onDup
   const style = { transform: CSS.Transform.toString(transform), transition };
   const priority = card.priority ? PRIORITY_STYLES[card.priority] : null;
   const labels = card.labels ?? [];
+  const dueStatus = card.due_date ? dueDateStatus(card.due_date) : null;
 
   return (
     <>
@@ -119,18 +130,10 @@ export const KanbanCard = ({ card, boardId, currentUser, onDelete, onEdit, onDup
         <p className="mt-1 text-sm leading-6 text-[var(--gray-text)]">{card.details}</p>
       )}
 
-      {/* Due date */}
-      {card.due_date && (
-        <p
-          className={clsx(
-            "mt-2 text-xs font-medium",
-            dueDateStatus(card.due_date) === "overdue" && "text-red-500",
-            dueDateStatus(card.due_date) === "soon" && "text-yellow-600",
-            dueDateStatus(card.due_date) === "ok" && "text-[var(--gray-text)]"
-          )}
-        >
+      {card.due_date && dueStatus && (
+        <p className={clsx("mt-2 text-xs font-medium", DUE_STATUS_CLASS[dueStatus])}>
           Due {card.due_date}
-          {dueDateStatus(card.due_date) === "overdue" && " · Overdue"}
+          {dueStatus === "overdue" && " · Overdue"}
         </p>
       )}
 

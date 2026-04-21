@@ -1,20 +1,22 @@
 "use client";
 
-import { useEffect, useMemo, useState, useCallback, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  closestCorners,
   DndContext,
   DragOverlay,
   PointerSensor,
   useSensor,
   useSensors,
-  closestCorners,
   type DragEndEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
-import { SortableContext, arrayMove, horizontalListSortingStrategy } from "@dnd-kit/sortable";
-import { KanbanColumn } from "@/components/KanbanColumn";
+import { arrayMove, horizontalListSortingStrategy, SortableContext } from "@dnd-kit/sortable";
 import { KanbanCardPreview } from "@/components/KanbanCardPreview";
-import { createId, moveCard, type BoardData, type Card, type Column } from "@/lib/kanban";
+import { KanbanColumn } from "@/components/KanbanColumn";
+import { createId, moveCard, type BoardData, type Card, type Priority } from "@/lib/kanban";
+
+const SOON_MS = 3 * 24 * 60 * 60 * 1000;
 
 type KanbanBoardProps = {
   board: BoardData;
@@ -28,6 +30,11 @@ export const KanbanBoard = ({ board, boardId, currentUser, onBoardChange }: Kanb
   const [activeCardId, setActiveCardId] = useState<string | null>(null);
   const [activeColumnId, setActiveColumnId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [filterPriority, setFilterPriority] = useState("");
+  const [filterAssignee, setFilterAssignee] = useState("");
+  const [filterDue, setFilterDue] = useState("");
+  const [filterLabel, setFilterLabel] = useState("");
+  const [hideArchived, setHideArchived] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -35,12 +42,8 @@ export const KanbanBoard = ({ board, boardId, currentUser, onBoardChange }: Kanb
   }, [board]);
 
   const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: { distance: 6 },
-    })
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } })
   );
-
-  const cardsById = useMemo(() => localBoard.cards, [localBoard.cards]);
 
   const updateBoard = (nextBoard: BoardData) => {
     setLocalBoard(nextBoard);
@@ -101,7 +104,7 @@ export const KanbanBoard = ({ board, boardId, currentUser, onBoardChange }: Kanb
     columnId: string,
     title: string,
     details: string,
-    priority?: import("@/lib/kanban").Priority | null,
+    priority?: Priority | null,
     due_date?: string | null,
     labels?: string[]
   ) => {
@@ -110,7 +113,14 @@ export const KanbanBoard = ({ board, boardId, currentUser, onBoardChange }: Kanb
       ...localBoard,
       cards: {
         ...localBoard.cards,
-        [id]: { id, title, details: details || "", priority: priority ?? null, due_date: due_date ?? null, labels: labels ?? [] },
+        [id]: {
+          id,
+          title,
+          details: details || "",
+          priority: priority ?? null,
+          due_date: due_date ?? null,
+          labels: labels ?? [],
+        },
       },
       columns: localBoard.columns.map((column) =>
         column.id === columnId
@@ -149,17 +159,13 @@ export const KanbanBoard = ({ board, boardId, currentUser, onBoardChange }: Kanb
   };
 
   const handleDeleteCard = (columnId: string, cardId: string) => {
+    const { [cardId]: _removed, ...remainingCards } = localBoard.cards;
     updateBoard({
       ...localBoard,
-      cards: Object.fromEntries(
-        Object.entries(localBoard.cards).filter(([id]) => id !== cardId)
-      ),
+      cards: remainingCards,
       columns: localBoard.columns.map((column) =>
         column.id === columnId
-          ? {
-              ...column,
-              cardIds: column.cardIds.filter((id) => id !== cardId),
-            }
+          ? { ...column, cardIds: column.cardIds.filter((id) => id !== cardId) }
           : column
       ),
     });
@@ -167,14 +173,16 @@ export const KanbanBoard = ({ board, boardId, currentUser, onBoardChange }: Kanb
 
   const handleDuplicateCard = (columnId: string, cardId: string) => {
     const src = localBoard.cards[cardId];
-    if (!src) return;
+    const col = localBoard.columns.find((c) => c.id === columnId);
+    if (!src || !col) return;
     const newId = createId("card");
     const clone: Card = { ...src, id: newId, title: `${src.title} (copy)` };
-    const col = localBoard.columns.find((c) => c.id === columnId);
-    if (!col) return;
-    const idx = col.cardIds.indexOf(cardId);
-    const newCardIds = [...col.cardIds];
-    newCardIds.splice(idx + 1, 0, newId);
+    const insertAt = col.cardIds.indexOf(cardId) + 1;
+    const newCardIds = [
+      ...col.cardIds.slice(0, insertAt),
+      newId,
+      ...col.cardIds.slice(insertAt),
+    ];
     updateBoard({
       ...localBoard,
       cards: { ...localBoard.cards, [newId]: clone },
@@ -192,69 +200,15 @@ export const KanbanBoard = ({ board, boardId, currentUser, onBoardChange }: Kanb
       try {
         const parsed = JSON.parse(ev.target?.result as string);
         if (parsed.columns && parsed.cards) {
-          updateBoard(parsed as import("@/lib/kanban").BoardData);
+          updateBoard(parsed as BoardData);
         }
       } catch {
-        // silently ignore invalid JSON
+        // Silently ignore invalid JSON.
       }
     };
     reader.readAsText(file);
     e.target.value = "";
   };
-
-  const activeCard = activeCardId ? cardsById[activeCardId] : null;
-
-  const [filterPriority, setFilterPriority] = useState<string>("");
-  const [filterAssignee, setFilterAssignee] = useState<string>("");
-  const [filterDue, setFilterDue] = useState<string>("");
-  const [hideArchived, setHideArchived] = useState(false);
-
-  const allLabels = useMemo(() => {
-    const set = new Set<string>();
-    Object.values(localBoard.cards).forEach((c) => (c.labels ?? []).forEach((l) => set.add(l)));
-    return Array.from(set).sort();
-  }, [localBoard.cards]);
-
-  const [filterLabel, setFilterLabel] = useState<string>("");
-
-  const allAssignees = useMemo(() => {
-    const set = new Set<string>();
-    Object.values(localBoard.cards).forEach((c) => { if (c.assignee) set.add(c.assignee); });
-    return Array.from(set).sort();
-  }, [localBoard.cards]);
-
-  const hasActiveFilter = !!(searchQuery.trim() || filterPriority || filterAssignee || filterDue || filterLabel || hideArchived);
-
-  const clearFilters = () => {
-    setSearchQuery("");
-    setFilterPriority("");
-    setFilterAssignee("");
-    setFilterDue("");
-    setFilterLabel("");
-    setHideArchived(false);
-  };
-
-  const matchesSearch = useCallback((card: Card): boolean => {
-    if (hideArchived && card.archived) return false;
-    if (filterPriority && card.priority !== filterPriority) return false;
-    if (filterLabel && !(card.labels ?? []).includes(filterLabel)) return false;
-    if (filterAssignee && card.assignee !== filterAssignee) return false;
-    if (filterDue === "overdue") {
-      if (!card.due_date || new Date(card.due_date).getTime() >= Date.now()) return false;
-    } else if (filterDue === "soon") {
-      const diff = card.due_date ? new Date(card.due_date).getTime() - Date.now() : null;
-      if (diff === null || diff < 0 || diff >= 3 * 24 * 60 * 60 * 1000) return false;
-    } else if (filterDue === "none") {
-      if (card.due_date) return false;
-    }
-    if (!searchQuery.trim()) return true;
-    const q = searchQuery.toLowerCase();
-    return (
-      card.title.toLowerCase().includes(q) ||
-      (card.details ?? "").toLowerCase().includes(q) ||
-      (card.labels ?? []).some((l) => l.toLowerCase().includes(q))
-    );
-  }, [searchQuery, filterPriority, filterLabel, filterAssignee, filterDue, hideArchived]);
 
   const handleExport = () => {
     const blob = new Blob([JSON.stringify(localBoard, null, 2)], { type: "application/json" });
@@ -266,7 +220,67 @@ export const KanbanBoard = ({ board, boardId, currentUser, onBoardChange }: Kanb
     URL.revokeObjectURL(url);
   };
 
-  // Ctrl+K / Cmd+K focuses search
+  const activeCard = activeCardId ? localBoard.cards[activeCardId] : null;
+
+  const { allLabels, allAssignees } = useMemo(() => {
+    const labels = new Set<string>();
+    const assignees = new Set<string>();
+    for (const card of Object.values(localBoard.cards)) {
+      card.labels?.forEach((l) => labels.add(l));
+      if (card.assignee) assignees.add(card.assignee);
+    }
+    return {
+      allLabels: Array.from(labels).sort(),
+      allAssignees: Array.from(assignees).sort(),
+    };
+  }, [localBoard.cards]);
+
+  const hasActiveFilter = !!(
+    searchQuery.trim() ||
+    filterPriority ||
+    filterAssignee ||
+    filterDue ||
+    filterLabel ||
+    hideArchived
+  );
+
+  const clearFilters = () => {
+    setSearchQuery("");
+    setFilterPriority("");
+    setFilterAssignee("");
+    setFilterDue("");
+    setFilterLabel("");
+    setHideArchived(false);
+  };
+
+  const matchesSearch = useCallback(
+    (card: Card): boolean => {
+      if (hideArchived && card.archived) return false;
+      if (filterPriority && card.priority !== filterPriority) return false;
+      if (filterLabel && !(card.labels ?? []).includes(filterLabel)) return false;
+      if (filterAssignee && card.assignee !== filterAssignee) return false;
+
+      if (filterDue) {
+        const dueMs = card.due_date ? new Date(card.due_date).getTime() : null;
+        if (filterDue === "overdue" && (dueMs === null || dueMs >= Date.now())) return false;
+        if (filterDue === "soon") {
+          const diff = dueMs !== null ? dueMs - Date.now() : null;
+          if (diff === null || diff < 0 || diff >= SOON_MS) return false;
+        }
+        if (filterDue === "none" && card.due_date) return false;
+      }
+
+      const q = searchQuery.trim().toLowerCase();
+      if (!q) return true;
+      return (
+        card.title.toLowerCase().includes(q) ||
+        (card.details ?? "").toLowerCase().includes(q) ||
+        (card.labels ?? []).some((l) => l.toLowerCase().includes(q))
+      );
+    },
+    [searchQuery, filterPriority, filterLabel, filterAssignee, filterDue, hideArchived]
+  );
+
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === "k") {
